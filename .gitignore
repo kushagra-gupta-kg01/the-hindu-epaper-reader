@@ -29,3 +29,8 @@ Thumbs.db
 
 # Project caches & temporary data
 data/
+
+# Coverage reports
+.coverage
+htmlcov/
+coverage.xml

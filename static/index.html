@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en" class="theme-broadside">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Hindu ePaper Reader</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&family=Playfair+Display:ital,wght@0,700;0,900;1,600&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300&family=Outfit:wght@400;500;600&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  
+  <!-- Inlined FOUC Prevention Script -->
+  <script>
+    (function() {
+      const savedTheme = localStorage.getItem('the-hindu-reader-theme') || 'theme-broadside';
+      document.documentElement.className = savedTheme;
+    })();
+  </script>
+
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+
+  <!-- Global Notification Banner -->
+  <div id="notification-banner" class="notification-banner" style="display: none;">
+    <span id="notification-text">Warning message goes here.</span>
+    <button id="notification-action-btn" class="notification-btn" style="display: none;">Action</button>
+  </div>
+
+  <!-- Main Application Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand-group">
+        <h1 class="brand-title">The Hindu</h1>
+        <div class="brand-subtitle">ePaper Digital Reader</div>
+      </div>
+      
+      <div class="control-panel">
+        <!-- Edition Selector -->
+        <div class="control-group">
+          <label for="city-select">Edition</label>
+          <select id="city-select" class="ui-select">
+            <option value="th_delhi">Delhi Edition</option>
+            <option value="th_chennai">Chennai Edition</option>
+            <option value="th_bangalore">Bengaluru Edition</option>
+            <option value="th_mumbai">Mumbai Edition</option>
+            <option value="th_hyderabad">Hyderabad Edition</option>
+          </select>
+        </div>
+        
+        <!-- Date Selector -->
+        <div class="control-group">
+          <label for="date-select">Date</label>
+          <input type="date" id="date-select" class="ui-date-input">
+        </div>
+        <!-- Theme Selector -->
+        <div class="control-group">
+          <label>Theme</label>
+          <div class="theme-switcher">
+            <button class="theme-btn active" data-theme="theme-broadside" title="The Broadside (Cream)">Broadside</button>
+            <button class="theme-btn" data-theme="theme-folio" title="The Folio (Kindle E-Ink)">Folio</button>
+            <button class="theme-btn" data-theme="theme-dispatch" title="The Dispatch (Substack)">Dispatch</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Sticky Section Navigation Bar -->
+  <nav id="section-nav" class="section-nav">
+    <div class="section-nav-container">
+      <ul id="section-nav-list" class="section-nav-list">
+        <!-- Dynamically Populated Section Links -->
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Main Newspaper Headlines Area -->
+  <main id="headlines-container" class="headlines-container">
+    <div class="headlines-loading" id="main-loader" role="alert" aria-busy="true">
+      <div class="spinner"></div>
+      <span class="sr-only">Fetching newspaper headlines...</span>
+    </div>
+    
+    <div id="headlines-content" class="headlines-content">
+      <!-- Dynamic headlines grouped by section will render here -->
+    </div>
+  </main>
+
+  <!-- Overlay Reading Drawer (Distraction-Free) -->
+  <div id="reader-pane" class="reader-pane" tabindex="-1" aria-hidden="true" style="display: none;">
+    <!-- Scroll Progress Indicator -->
+    <div id="reader-progress-bar" class="reader-progress-bar" style="width: 0%;"></div>
+    
+    <button id="reader-close-btn" class="reader-close-btn" aria-label="Close article reader">
+      &larr; Back to Grid
+    </button>
+    
+    <div class="reader-loading" id="reader-loader" role="alert" aria-busy="true" style="display: none;">
+      <div class="spinner"></div>
+      <span class="sr-only">Fetching full article content...</span>
+    </div>
+
+    <div id="reader-content" class="reader-content" style="display: none;">
+      <article class="article-reader-container">
+        <header class="reader-header">
+          <div id="reader-category" class="reader-category">SECTION</div>
+          <h1 id="reader-headline" class="reader-headline">Article Title</h1>
+          <div id="reader-byline" class="reader-byline">By Writer</div>
+          <div id="reader-dateline" class="reader-dateline">LOCATION, DATE</div>
+        </header>
+        <section id="reader-body" class="reader-body">
+          <!-- Paragraphs are dynamically appended here -->
+        </section>
+      </article>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

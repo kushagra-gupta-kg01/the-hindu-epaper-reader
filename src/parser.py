@@ -1,0 +1,154 @@
+import json
+from bs4 import BeautifulSoup
+
+def parse_catalog(catalog_json: str, city_key: str) -> str:
+    try:
+        data = json.loads(catalog_json)
+    except Exception as e:
+        raise ValueError(f"Failed to parse catalog JSON: {e}")
+        
+    publications = data.get("publications", [])
+    for pub in publications:
+        if pub.get("id") == city_key:
+            issues = pub.get("issues", {}).get("web", [])
+            if issues:
+                return str(issues[0].get("id"))
+                
+    raise ValueError(f"City key {city_key} not found")
+
+def parse_cciobjects(cciobjects_json: str) -> dict:
+    try:
+        data = json.loads(cciobjects_json)
+    except Exception as e:
+        raise ValueError(f"Failed to parse cciobjects JSON: {e}")
+        
+    issue_id = data.get("id")
+    pages_data = data.get("children", [])
+    
+    parsed_pages = []
+    page_nodes = [p for p in pages_data if p.get("kind") == "Page"]
+    
+    for idx, page in enumerate(page_nodes):
+        page_num = idx + 1
+        attrs = page.get("attributes", {})
+        page_name = attrs.get("Name", f"Page_{page_num:02d}")
+        
+        # Parse articles on this page
+        page_children = page.get("children", [])
+        parsed_articles = []
+        
+        for child in page_children:
+            if child.get("kind") != "Article":
+                continue
+                
+            art_id = child.get("id")
+            art_attrs = child.get("attributes", {})
+            art_name = art_attrs.get("Name", "")
+            art_headline = art_attrs.get("Headline", "")
+            
+            # Find HTML reference
+            html_ref = None
+            for c in child.get("content", []):
+                ref = c.get("reference", "")
+                if ref.endswith(".html"):
+                    html_ref = ref
+                    break
+                    
+            if not html_ref:
+                # Search nested Text elements
+                for sub_child in child.get("children", []):
+                    if sub_child.get("kind") == "Text":
+                        for c in sub_child.get("content", []):
+                            ref = c.get("reference", "")
+                            if ref.endswith(".html"):
+                                html_ref = ref
+                                break
+                        if html_ref:
+                            break
+                            
+            # We only keep the article if it has an HTML content file associated with it
+            if html_ref:
+                # Parse associated images from content list and nested Photo structures
+                images = []
+                for c in child.get("content", []):
+                    ref = c.get("reference", "")
+                    if "Public/" in ref and ref.endswith(".jpg"):
+                        images.append(ref)
+                
+                for sub_child in child.get("children", []):
+                    if sub_child.get("kind") == "Photo":
+                        for c in sub_child.get("content", []):
+                            ref = c.get("reference", "")
+                            if "Public/" in ref and ref.endswith(".jpg"):
+                                images.append(ref)
+                images = list(dict.fromkeys(images))
+                parsed_articles.append({
+                    "id": art_id,
+                    "headline": art_headline or art_name,
+                    "html_ref": html_ref,
+                    "images": images
+                })
+                
+        parsed_pages.append({
+            "page_num": page_num,
+            "page_name": page_name,
+            "articles": parsed_articles
+        })
+        
+    # Sort pages by page number
+    parsed_pages.sort(key=lambda x: x["page_num"])
+    
+    return {
+        "issue_id": issue_id,
+        "pages": parsed_pages
+    }
+
+def parse_article(html_content: str, article_id: str) -> dict:
+    soup = BeautifulSoup(html_content, "html.parser")
+    
+    # Headline
+    headline = ""
+    head_tag = soup.find(["h1", "h2", "h3"])
+    if head_tag:
+        headline = " ".join([p.get_text().strip() for p in head_tag.find_all("p")])
+        if not headline:
+            headline = head_tag.get_text().strip()
+            
+    # Author / Byline
+    byline_name = None
+    byline_tag = soup.find("span", class_="byline_name")
+    if byline_tag:
+        byline_name = byline_tag.get_text().strip()
+        
+    # Dateline / Location
+    dateline = None
+    dateline_tag = soup.find("span", class_="dateline")
+    if dateline_tag:
+        dateline = dateline_tag.get_text().strip()
+        
+    # Body Paragraphs
+    body_paragraphs = []
+    body_tag = soup.find("div", class_="body")
+    if body_tag:
+        for p in body_tag.find_all("p"):
+            p_text = p.get_text().strip()
+            if p_text:
+                body_paragraphs.append(p_text)
+                
+    # Highlights / Liftouts
+    highlights = []
+    liftout_tag = soup.find("div", class_="liftout")
+    if liftout_tag:
+        for p in liftout_tag.find_all("p"):
+            l_text = p.get_text().strip()
+            if l_text:
+                highlights.append(l_text)
+                
+    return {
+        "id": article_id,
+        "headline": headline,
+        "author": byline_name,
+        "dateline": dateline,
+        "body": body_paragraphs,
+        "highlights": highlights
+    }

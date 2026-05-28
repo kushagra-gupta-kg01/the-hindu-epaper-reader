@@ -1,0 +1,697 @@
+/* ==========================================================================
+   DESIGN TOKENS & SYSTEM VARIABLES
+   ========================================================================== */
+
+/* Default Theme: Theme 1 - The Broadside (Classic Print Editorial) */
+:root, html.theme-broadside {
+  --bg-color: #FAF7F2;
+  --text-color: #1C1B1A;
+  --border-color: #E6E1DA;
+  --accent-color: #8C2525;
+  --meta-color: #5C5852;
+  --hover-tint: #F3ECE0;
+  
+  --font-serif-heading: 'Playfair Display', Georgia, serif;
+  --font-serif-body: 'Lora', Georgia, serif;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  
+  --letter-spacing-banner: -0.5px;
+  --header-double-border: 4px double var(--border-color);
+}
+
+/* Theme 2: Theme 2 - The Folio (Kindle / E-Ink Minimalist) */
+html.theme-folio {
+  --bg-color: #F9F9F8;
+  --text-color: #222222;
+  --border-color: #EDECE9;
+  --accent-color: #4A6B5D;
+  --meta-color: #6E6D6A;
+  --hover-tint: #F0EEEB;
+  
+  --font-serif-heading: 'Merriweather', Georgia, serif;
+  --font-serif-body: 'Merriweather', Georgia, serif;
+  --font-sans: 'Outfit', system-ui, -apple-system, sans-serif;
+  
+  --letter-spacing-banner: 0px;
+  --header-double-border: 1px solid var(--border-color);
+}
+
+/* Theme 3: Theme 3 - The Dispatch (Modern Newsletter / Substack) */
+html.theme-dispatch {
+  --bg-color: #FCFCFB;
+  --text-color: #292929;
+  --border-color: #EBEAE6;
+  --accent-color: #3855E0;
+  --meta-color: #696865;
+  --hover-tint: #F2F1EC;
+  
+  --font-serif-heading: 'PT Serif', Georgia, serif;
+  --font-serif-body: 'PT Serif', Georgia, serif;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  
+  --letter-spacing-banner: -0.2px;
+  --header-double-border: 1px solid var(--border-color);
+}
+
+/* ==========================================================================
+   BASE & RESET STYLES
+   ========================================================================== */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  min-height: 100vh;
+  position: relative;
+}
+
+/* iOS Position Lock Class */
+body.reader-open {
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+  height: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Visually Hidden for accessibility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+/* ==========================================================================
+   APP HEADER
+   ========================================================================== */
+
+.app-header {
+  border-bottom: var(--header-double-border);
+  padding: 24px 16px 16px 16px;
+  background-color: var(--bg-color);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.header-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.brand-title {
+  font-family: var(--font-serif-heading);
+  font-size: 3rem;
+  font-weight: 900;
+  letter-spacing: var(--letter-spacing-banner);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+  line-height: 1;
+}
+
+.brand-subtitle {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--meta-color);
+  margin-bottom: 20px;
+}
+
+/* Control Panel */
+.control-panel {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 24px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 16px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--meta-color);
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.control-group label {
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 1px;
+  font-weight: 700;
+}
+
+/* Custom UI Inputs */
+.ui-select, .ui-date-input {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.ui-select:hover, .ui-date-input:hover {
+  border-color: var(--accent-color);
+  background-color: var(--hover-tint);
+}
+
+/* Checkbox Toggle */
+.checkbox-group {
+  cursor: pointer;
+}
+
+.ui-checkbox {
+  cursor: pointer;
+  accent-color: var(--accent-color);
+  width: 14px;
+  height: 14px;
+}
+
+.checkbox-label {
+  cursor: pointer;
+  font-size: 0.8rem !important;
+  font-weight: 600 !important;
+  color: var(--text-color);
+}
+
+/* Theme Switcher buttons */
+.theme-switcher {
+  display: flex;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.theme-btn {
+  background: none;
+  border: none;
+  color: var(--meta-color);
+  padding: 6px 12px;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.theme-btn:not(:last-child) {
+  border-right: 1px solid var(--border-color);
+}
+
+.theme-btn:hover {
+  background-color: var(--hover-tint);
+  color: var(--text-color);
+}
+
+.theme-btn.active {
+  background-color: var(--accent-color);
+  color: #fff;
+}
+
+/* ==========================================================================
+   NOTIFICATION / ERROR BANNER
+   ========================================================================== */
+
+.notification-banner {
+  background-color: #fce8e6;
+  color: #c5221f;
+  border-bottom: 1px solid #fad2cf;
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  z-index: 1000;
+}
+
+.notification-btn {
+  background-color: #c5221f;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: opacity 0.2s ease;
+}
+
+.notification-btn:hover {
+  opacity: 0.9;
+}
+
+/* ==========================================================================
+   STICKY SECTION NAVIGATION
+   ========================================================================== */
+
+.section-nav {
+  position: sticky;
+  top: 0;
+  background-color: var(--bg-color);
+  border-bottom: 1px solid var(--border-color);
+  z-index: 100;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.section-nav-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none; /* Hide scrollbar for Firefox */
+}
+
+.section-nav-container::-webkit-scrollbar {
+  display: none; /* Hide scrollbar for Chrome/Safari */
+}
+
+.section-nav-list {
+  display: flex;
+  list-style: none;
+  padding: 0 16px;
+}
+
+.section-nav-item {}
+
+.section-nav-link {
+  display: block;
+  padding: 14px 16px;
+  text-decoration: none;
+  color: var(--meta-color);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  position: relative;
+  transition: color 0.2s ease;
+  cursor: pointer;
+}
+
+.section-nav-link:hover {
+  color: var(--text-color);
+}
+
+.section-nav-link.active {
+  color: var(--accent-color);
+  font-weight: 700;
+}
+
+.section-nav-link.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 16px;
+  right: 16px;
+  height: 3px;
+  background-color: var(--accent-color);
+  border-radius: 2px 2px 0 0;
+}
+
+/* ==========================================================================
+   HEADLINES CONTAINER & GRID
+   ========================================================================== */
+
+.headlines-container {
+  max-width: 1200px;
+  margin: 32px auto 0 auto;
+  padding: 0 16px;
+  min-height: 50vh;
+}
+
+.section-block {
+  margin-bottom: 56px;
+  /* Visual offset when jumping via sticky header links */
+  scroll-margin-top: 80px; 
+}
+
+.section-header {
+  font-family: var(--font-serif-heading);
+  font-size: 1.6rem;
+  font-weight: 700;
+  border-bottom: 2px solid var(--text-color);
+  padding-bottom: 6px;
+  margin-bottom: 24px;
+  text-transform: capitalize;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+
+
+/* 12-Column Responsive Grid */
+.article-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 28px;
+}
+
+/* Base Card Styling */
+.article-card {
+  grid-column: span 4;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 20px;
+  background-color: transparent;
+  transition: all 0.2s ease;
+}
+
+.card-meta {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent-color);
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.card-headline {
+  font-family: var(--font-serif-heading);
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.25;
+  margin-bottom: 10px;
+  color: var(--text-color);
+  transition: color 0.15s ease;
+}
+
+
+.card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--meta-color);
+  font-weight: 500;
+  margin-top: auto;
+}
+
+/* Card Hover Micro-Animations */
+.article-card:hover .card-headline {
+  color: var(--accent-color);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+}
+
+/* Lead Card (spans 8 columns) */
+.article-card.lead {
+  grid-column: span 8;
+  border-right: 1px solid var(--border-color);
+  padding-right: 28px;
+}
+
+.article-card.lead .card-headline {
+  font-size: 1.95rem;
+}
+
+
+/* ==========================================================================
+   DISTRACTION-FREE ARTICLE READER DRAWER
+   ========================================================================== */
+
+.reader-pane {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100dvh; /* Dynamic viewport height */
+  background-color: var(--bg-color);
+  z-index: 1000;
+  overflow-y: auto;
+  padding: 40px 16px 80px 16px;
+  display: flex;
+  justify-content: center;
+  transition: background-color 0.3s ease;
+  outline: none;
+}
+
+/* Progress bar filling dynamically at top of viewport */
+.reader-progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 3px;
+  background-color: var(--accent-color);
+  z-index: 1100;
+  transition: width 0.1s ease;
+}
+
+.reader-close-btn {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 8px 14px;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--meta-color);
+  cursor: pointer;
+  z-index: 1050;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+}
+
+.reader-close-btn:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  background-color: var(--hover-tint);
+}
+
+/* Reader Inner Container (Width constrained to 680px for read ergonomics) */
+.reader-content {
+  max-width: 680px;
+  width: 100%;
+  margin: 60px auto 0 auto;
+}
+
+.reader-header {
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 24px;
+  margin-bottom: 32px;
+}
+
+.reader-category {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent-color);
+  margin-bottom: 12px;
+  letter-spacing: 0.5px;
+}
+
+.reader-headline {
+  font-family: var(--font-serif-heading);
+  font-size: 2.3rem;
+  line-height: 1.2;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: var(--text-color);
+}
+
+.reader-byline {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--meta-color);
+  margin-bottom: 4px;
+}
+
+.reader-dateline {
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-color);
+}
+
+.reader-body {
+  font-family: var(--font-serif-body);
+  font-size: 1.2rem;
+  line-height: 1.75;
+  color: var(--text-color);
+}
+
+.reader-body p {
+  margin-bottom: 24px;
+}
+
+/* Quotes/Highlights styled with thick left ink border */
+.highlight-box {
+  border-left: 3px solid var(--accent-color);
+  padding-left: 20px;
+  margin: 32px 0;
+  font-family: var(--font-serif-heading);
+  font-size: 1.35rem;
+  line-height: 1.45;
+  color: var(--accent-color);
+  font-style: italic;
+}
+
+/* ==========================================================================
+   SPINNERS & LOADERS
+   ========================================================================== */
+
+.headlines-loading, .reader-loading {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 60px 0;
+  gap: 16px;
+  color: var(--meta-color);
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Empty State / Fallback notice box */
+.empty-state {
+  text-align: center;
+  padding: 48px 16px;
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+  margin: 40px 0;
+}
+
+.empty-state-title {
+  font-family: var(--font-serif-heading);
+  font-size: 1.4rem;
+  margin-bottom: 12px;
+}
+
+.empty-state-desc {
+  font-size: 0.9rem;
+  color: var(--meta-color);
+  max-width: 500px;
+  margin: 0 auto 16px auto;
+}
+
+/* ==========================================================================
+   RESPONSIVE MEDIA QUERIES
+   ========================================================================== */
+
+@media (max-width: 900px) {
+  .brand-title {
+    font-size: 2.4rem;
+  }
+  
+  .control-panel {
+    gap: 16px;
+  }
+  
+  .article-card.lead {
+    grid-column: span 12;
+    border-right: none;
+    padding-right: 0;
+    border-bottom: 1px solid var(--border-color);
+  }
+  
+  .article-card {
+    grid-column: span 6;
+  }
+}
+
+@media (max-width: 600px) {
+  .app-header {
+    padding: 16px 12px 12px 12px;
+  }
+  
+  .brand-title {
+    font-size: 2rem;
+  }
+  
+  .control-panel {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding-top: 12px;
+  }
+  
+  .control-group {
+    justify-content: space-between;
+  }
+  
+  .theme-switcher {
+    width: 100%;
+  }
+  
+  .theme-btn {
+    flex: 1;
+    text-align: center;
+  }
+  
+  .section-nav-link {
+    padding: 12px 12px;
+    font-size: 0.75rem;
+  }
+  
+  .article-card {
+    grid-column: span 12;
+  }
+  
+  .reader-close-btn {
+    top: 10px;
+    left: 10px;
+    padding: 6px 10px;
+    font-size: 0.7rem;
+  }
+  
+  .reader-content {
+    margin-top: 40px;
+  }
+  
+  .reader-headline {
+    font-size: 1.8rem;
+  }
+}

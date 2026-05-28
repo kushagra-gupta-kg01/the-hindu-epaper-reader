@@ -1,0 +1,450 @@
+/* rev date - 20-07-2023 */
+@import url('https://fonts.googleapis.com/css?family=Open+Sans');
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400;1,700;1,900&display=swap');
+
+/* this font-face only available for digital driver versions >= 3.46.0 (CciObjectsVersion > 3) */
+@font-face {
+  font-family: 'stibo-icons';
+  src: url('stibo-icons.eot?cg02q9');
+  src: url('stibo-icons.eot?cg02q9#iefix') format('embedded-opentype'),
+    url('stibo-icons.ttf?cg02q9') format('truetype'),
+    url('stibo-icons.woff?cg02q9') format('woff'),
+    url('stibo-icons.svg?cg02q9#stibo-icons') format('svg');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+html {
+  font-family: 'Open Sans', sans-serif;
+  font-size: 12pt;
+  line-height: 1.375rem;
+  font-weight: 300;
+  color: #1d1d1d;
+  /* -webkit-transition: all 0.1s ease;
+  -moz-transition: all 0.1s ease;
+  -o-transition: all 0.1s ease;
+  -ms-transition: all 0.1s ease; */
+}
+
+body {
+  padding-left: 42px;
+  padding-right: 42px;
+  max-width: 968px;
+  margin-left: auto;
+  margin-right: auto;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+*:empty {
+  display: none; 
+}
+
+/* below code added to show piano template in shared article 20-07-2023*/
+.tp-modal > * :empty {
+  display: block !important;
+}
+/* below code added to show piano template in shared article 20-07-2023 */
+.tp-container-inner *:empty {
+  display: block !important;
+}
+
+:before {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: greyscale;
+}
+
+.topics-intro, .head_label, .head_overline, .head_kicker {
+  order: 1;
+}
+
+.head, .header {
+  order: 2;
+}
+
+.image-gallery-container, .image-caption-ios-container, .image-gallery-caption {
+  order: 4;
+}
+
+.head_deck {
+  order: 3;
+}
+
+.byline {
+  order: 5;
+}
+
+.quote, .quote1, .liftout {
+  order: 6;
+}
+
+.liftout {
+  margin-top: 10px
+}
+
+.body {
+  order: 8;
+}
+
+.factbox, .infobox {
+  order: 7;
+}
+
+.label, .kicker, .head_overline, .head_kicker {
+  color: #b01c29 !important;
+  text-transform: uppercase;
+}
+
+.head, .header {
+  font-size: 1.15rem;
+  line-height: 2.188rem;
+  font-weight: 600;
+  color: rgba(19, 59, 90, 1);
+}
+
+.head_deck, .subhead {
+  font-size: 1.125rem;
+  line-height: 1.6rem;
+  font-weight: 600;
+  color: rgba(19, 59, 90, 1);
+}
+
+.topics-intro, .head_label, .head_overline, .head_kicker {
+  font-size: 0.813rem;
+  line-height: 1.125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: rgb(153, 153, 153);
+}
+
+.byline, .tagline_name {
+  font-size: 0.813rem;
+  line-height: 1.125rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: rgba(0, 0, 0, 0.842);
+  border-bottom-style: solid;
+  border-bottom-width: thin;
+  border-color: rgba(153, 153, 153, .5);
+}
+
+.byline p:last-child {
+  position: relative;
+  margin-block-end: 0em;
+}
+
+.quote-container {
+  position: relative;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.quote1 {
+  padding-left: 3.7rem;
+  min-height: 2.4rem;
+}
+.quote{
+  padding-left: 3.7rem;
+}
+
+.quote::before, .quote1::before {
+  /* font-family and content with 'stibo-icons' only available for digital driver versions >= 3.46.0 (CciObjectsVersion > 3) */
+  font-family: 'stibo-icons' !important;
+  content: '\e900';
+
+  color: rgb(219, 41, 41);
+  position: relative;
+  top: 0;
+  left: 0;
+  font-size: 2.4rem;
+  line-height: 1em;
+}
+
+span.quote_name:before {
+  content: "- ";
+}
+
+span.quote_attrib {
+  font-size: 13px;
+  display: block;
+}
+
+span.quote_name {
+  font-size: 14px;
+  font-weight: bold;
+  color: rgb(219, 41, 41);
+  text-transform: uppercase;
+}
+
+.quote p:first-child {
+  display: block;
+}
+
+.quote p {
+  margin: 10px 0;
+}
+
+.factbox, .factbox1, .infobox {
+  border-left-width: 6px;
+  border-left-color: #999999;
+  border-left-style: solid;
+  margin-left: 2.4rem;
+  margin-right: 3.4rem;
+  padding-left: 1rem;
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+}
+.liftout{
+  border-left-width: 6px;
+  border-top-color: #b01c29;
+  border-bottom-color: #b01c29;
+  border-top-style: double;
+  border-bottom-style: double;
+  margin-left: 2.4rem;
+  margin-right: 3.4rem;
+  padding-left: 1rem;
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+}
+.quote{
+  margin-left: 2.4rem;
+  margin-right: 3.4rem
+}
+
+.factbox_head, .infobox_head {
+  font-weight: 600;
+}
+
+.bold {
+  font-weight: 600;
+}
+
+.italic {
+  font-style: italic;
+}
+
+.image-gallery-caption, .nameline, .sig {
+  font-size: 0.813rem;
+  line-height: 1.125rem;
+  font-weight: 400;
+  color: rgba(102, 102, 102, 1);
+  border-bottom-style: solid;
+  border-bottom-width: thin;
+  border-color: rgba(102, 102, 102, .5);
+}
+
+.image-gallery-caption-overlay {
+  font-size: 1rem;
+  line-height: 1.375rem;
+  font-weight: 400;
+  color: rgb(255, 255, 255);
+}
+
+.image-gallery-caption-body-overlay {
+  background-color: rgba(29, 29, 29, .5);
+}
+
+.image-gallery-caption p:last-child {
+  margin-block-end: 0em;
+}
+
+.image-gallery-caption-count {
+  border-right-style: solid;
+  border-right-width: 1px;
+  padding-right: 0.3em;
+  border-color: rgba(153, 153, 153, .5);
+  color: rgba(153, 153, 153, 1);
+}
+
+.image-gallery-caption-count-overlay {
+  border-right-style: solid;
+  border-right-width: 1px;
+  padding-right: 0.3em;
+  border-color: rgba(153, 153, 153, .5);
+  color: rgb(153, 153, 153);
+}
+
+.image-gallery-caption-count-highlight {
+  color: rgb(29, 29, 29);
+}
+
+.image-gallery-caption-count-highlight-overlay {
+  color: rgb(255, 255, 255);
+}
+
+.image-gallery-image, .image-ios-container {
+  background-color: #f9f9f9;
+}
+
+.head, .header, .head_deck, .quote, .quote1, .byline, .image-gallery-container, .topics-intro, .head_label, .head_overline, .head_kicker {
+  margin-top: 1rem;
+}
+
+.head p, .header p, .head_deck p, .quote p, .quote1 p, .byline p, .topics-intro p, .head_label p, .head_overline p, .head_kicker p {
+  display: inline;
+}
+
+.jump_to, .jump_from {
+  display: none;
+}
+
+@media only screen and (min-width: 0px) and (min-device-width: 0px) {
+  .head {
+    font-size: 1.375rem;
+    line-height: 1.75rem;
+  }
+}
+
+@media only screen and (min-width: 501px) and (min-device-width: 501px) {
+  .head {
+    font-size: 1.75rem;
+    line-height: 2.188rem;
+  }
+}
+p .byline_name::after {
+  content: ",";
+  margin-left: -3px;
+}
+
+.byline {
+  position: relative;
+}
+
+.dateline::before {
+  content: "\a";
+  white-space: pre;
+  color: #fff !important;
+}
+
+.dateline {
+  font-weight: 400;
+}
+
+.refer {
+  text-transform: uppercase;
+  color: #b01c29;
+  font-size: small;
+  font-weight: 800;
+  order: 8;
+  text-align: right;
+}
+
+.refer p .leadout {
+  font-weight: 800;
+  text-transform: uppercase;
+  color: rgb(0, 0, 0);
+  font-size: small;
+}
+
+.refer p span.leadout::before{
+  content: "";
+  border: solid black;
+  border-width: 0 3px 3px 0;
+  display: inline-block;
+  padding: 3px;
+  transform: rotate(-45deg);
+  -webkit-transform: rotate(-45deg);
+  margin-right: 8px;
+}
+
+.head p {
+  font-family: "Merriweather";
+}
+
+.infobox .infobox_subhead p {
+  display: list-item;
+  list-style-type: disc;
+  list-style-position: inside;
+  list-style-type: square;
+}
+
+.infobox .infobox_subhead p::marker {
+  color: #b01c29;
+}
+
+.infobox_subhead, .factbox_subhead {
+  position: relative;
+  margin-bottom: 34px;
+}
+
+.infobox_subhead:after, .factbox_subhead:after {
+  border-bottom: 4px solid #b01c29;
+  width: 100%;
+  content: "";
+  position: absolute;
+  height: 10px;
+  left: 0;
+  bottom: -18px;
+  right: 0;
+}
+
+.signature {
+  margin-bottom: -15px;
+  font-variant: small-caps;
+}
+
+.image-gallery-caption-overlay span.cutline_credit:before {
+  color: rgb(255, 255, 255);
+}
+
+span.cutline_credit:before {
+  content: " - Photo: ";
+  color: rgba(102, 102, 102, 1);
+  font-weight: bold;
+}
+
+.signature_credit {
+  text-decoration: underline;
+}
+
+.subhead_lead p {
+  position: relative;
+  font-weight: bold;
+}
+
+span.tagline_credit {
+  font-style: italic;
+}
+
+.z_body_jump {
+  display: none
+}
+
+
+div.z_sym_squarebullet p {
+  display: list-item;
+  list-style-type: disc;
+  list-style-position: inside;
+  list-style-type: square;
+}
+
+p.z_sym_squarebullet::marker {
+  color: #b01c29;
+}
+
+@media(max-width:767px) {
+  body::before {
+    background-size: 35%;
+  }
+
+}
+
+.cutline_name {
+  display: none;
+}
+p span.z_sym_square_bullet {
+    width: 8px;
+    height: 8px;
+    background: #bd1111;
+    display: block;
+    float: left;
+    margin: 7px 8px 0px 0px;
+}
+

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Frontend Logic Unit Tests</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      padding: 40px;
+      background-color: #fafafa;
+      color: #333;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 {
+      border-bottom: 2px solid #ccc;
+      padding-bottom: 10px;
+      margin-bottom: 20px;
+    }
+    .test-case {
+      padding: 12px;
+      margin-bottom: 10px;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+      font-weight: 500;
+    }
+    .pass {
+      background-color: #e6f4ea;
+      color: #137333;
+      border-color: #ceead6;
+    }
+    .fail {
+      background-color: #fce8e6;
+      color: #c5221f;
+      border-color: #fad2cf;
+    }
+    pre {
+      margin-top: 8px;
+      font-family: monospace;
+      font-size: 0.85rem;
+      background: rgba(0,0,0,0.04);
+      padding: 8px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Frontend Logic Unit Tests</h1>
+  <div id="test-results">Running tests...</div>
+
+  <!-- Setup test mode flag to prevent app.js from executing its main startup logic -->
+  <script>
+    window.__TEST_MODE__ = true;
+  </script>
+  <script src="app.js"></script>
+  <script src="tests.js"></script>
+</body>
+</html>

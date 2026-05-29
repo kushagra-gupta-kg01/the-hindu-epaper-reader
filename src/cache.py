@@ -4,7 +4,15 @@ import time
 import uuid
 import datetime
 
-CACHE_DIR = "data"
+is_serverless = (
+    os.environ.get("VERCEL") is not None
+    or os.environ.get("VERCEL_ENV") is not None
+    or os.environ.get("AWS_LAMBDA_FUNCTION_NAME") is not None
+    or os.environ.get("LAMBDA_TASK_ROOT") is not None
+)
+CACHE_DIR = os.environ.get("CACHE_DIR") or (
+    "/tmp/thehindureader-cache" if is_serverless else "data"
+)
 
 def get_filepath(date: str, city: str) -> str:
     return os.path.join(CACHE_DIR, date, f"{city}.json")
@@ -42,11 +50,11 @@ def read(date: str, city: str) -> dict:
 def write(date: str, city: str, data: dict) -> bool:
     path = get_filepath(date, city)
     directory = os.path.dirname(path)
-    os.makedirs(directory, exist_ok=True)
     
     # Atomic write to prevent file corruption
     temp_path = f"{path}.tmp.{uuid.uuid4()}"
     try:
+        os.makedirs(directory, exist_ok=True)
         with open(temp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         os.replace(temp_path, path)

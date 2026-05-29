@@ -2,7 +2,8 @@ import os
 import time
 import datetime
 import pytest
-from src.cache import exists, read, write, clear
+from unittest.mock import patch
+from src.cache import exists, read, write, clear, get_filepath
 
 # Helper to get current date in IST (UTC+5:30)
 def get_ist_today_str():
@@ -47,7 +48,7 @@ def test_cache_ttl_past_date():
     write(past_date, city, data)
     
     # Manually modify the file modification time to 5 days ago
-    filepath = os.path.join("data", past_date, f"{city}.json")
+    filepath = get_filepath(past_date, city)
     five_days_ago = time.time() - (5 * 24 * 3600)
     os.utime(filepath, (five_days_ago, five_days_ago))
     
@@ -69,7 +70,7 @@ def test_cache_ttl_today_date():
     assert exists(today_str, city)  # Should exist
     
     # 2. Set file time to 25 hours ago
-    filepath = os.path.join("data", today_str, f"{city}.json")
+    filepath = get_filepath(today_str, city)
     twenty_five_hours_ago = time.time() - (25 * 3600)
     os.utime(filepath, (twenty_five_hours_ago, twenty_five_hours_ago))
     
@@ -77,3 +78,31 @@ def test_cache_ttl_today_date():
     assert not exists(today_str, city)
     
     clear(today_str, city)
+
+def test_cache_write_failure_is_non_fatal():
+    with patch("src.cache.os.makedirs", side_effect=OSError("read-only file system")):
+        assert write("2026-05-27", "th_delhi", {"sample": "data"}) is False
+
+def test_cache_directory_resolves_to_tmp_in_serverless():
+    import importlib
+    import src.cache
+    
+    # GIVEN the serverless environment variable is set
+    with patch.dict(os.environ, {"AWS_LAMBDA_FUNCTION_NAME": "test_lambda_func"}):
+        try:
+            # Force recalculation of import-time global CACHE_DIR variable
+            importlib.reload(src.cache)
+            
+            # THEN the filepath should point to /tmp
+            path = src.cache.get_filepath("2026-05-27", "th_delhi")
+            assert path.startswith("/tmp/thehindureader-cache")
+            
+            # Verify read/write in /tmp works successfully
+            data = {"serverless": "data"}
+            assert src.cache.write("2026-05-27", "th_delhi", data)
+            assert src.cache.exists("2026-05-27", "th_delhi")
+            assert src.cache.read("2026-05-27", "th_delhi") == data
+        finally:
+            # Ensure standard cache is restored for other tests
+            src.cache.clear("2026-05-27", "th_delhi")
+            importlib.reload(src.cache)

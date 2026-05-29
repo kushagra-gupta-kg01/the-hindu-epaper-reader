@@ -34,3 +34,4 @@ data/
 .coverage
 htmlcov/
 coverage.xml
+.vercel

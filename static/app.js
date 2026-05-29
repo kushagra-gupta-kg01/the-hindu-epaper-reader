@@ -11,7 +11,10 @@ const state = {
   activeArticleRef: null,
   isArticleLoading: false,
   savedScrollY: 0,
-  focusTrigger: null
+  focusTrigger: null,
+  topPicks: [],
+  topPicksStatus: 'not_generated',
+  limit: 10
 };
 
 // DOM Elements
@@ -34,6 +37,15 @@ const readerHeadline = document.getElementById('reader-headline');
 const readerByline = document.getElementById('reader-byline');
 const readerDateline = document.getElementById('reader-dateline');
 const readerBody = document.getElementById('reader-body');
+
+const aiPicksSection = document.getElementById('ai-picks-section');
+const aiStatusBadge = document.getElementById('ai-status-badge');
+const aiTriggerPanel = document.getElementById('ai-trigger-panel');
+const aiLoadingPanel = document.getElementById('ai-loading-panel');
+const aiReadyPanel = document.getElementById('ai-ready-panel');
+const aiPicksGrid = document.getElementById('ai-picks-grid');
+const aiGenerateBtn = document.getElementById('ai-generate-btn');
+const aiLimitBtns = document.querySelectorAll('#ai-limit-group .ai-limit-btn');
 
 // ==========================================================================
 // UTILITY FUNCTIONS
@@ -178,6 +190,27 @@ function initApp() {
     closeArticleReader();
   });
 
+  // AI picks generation trigger
+  if (aiGenerateBtn) {
+    aiGenerateBtn.addEventListener('click', () => {
+      generateTopPicks();
+    });
+  }
+
+  // AI picks count limit selector click handlers
+  if (aiLimitBtns && aiLimitBtns.length > 0) {
+    aiLimitBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        aiLimitBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.limit = parseInt(btn.getAttribute('data-limit'), 10) || 10;
+        if (state.topPicksStatus === 'ready') {
+          checkTopPicksCache(state.date, state.city);
+        }
+      });
+    });
+  }
+
   // Browser Back/Forward Sync (popstate)
   window.addEventListener('popstate', (e) => {
     const freshParams = parseQueryParams(window.location.search);
@@ -299,6 +332,11 @@ async function fetchHeadlines() {
   headlinesContent.style.display = 'none';
   sectionNavList.innerHTML = '';
   
+  // Hide picks section immediately to prevent stale visual flashes
+  if (aiPicksSection) {
+    aiPicksSection.style.display = 'none';
+  }
+  
   try {
     const response = await fetch(`/api/headlines?date=${state.date}&city=${state.city}`);
     
@@ -330,6 +368,11 @@ async function fetchHeadlines() {
     state.rawPages = data.pages;
     
     renderGrid();
+    
+    // Check Top Picks Cache if we have articles loaded
+    if (state.rawPages && state.rawPages.length > 0) {
+      checkTopPicksCache(state.date, state.city);
+    }
   } catch (error) {
     showBanner(`Network error: Unable to connect to server.`);
     mainLoader.style.display = 'none';
@@ -537,6 +580,206 @@ function setupScrollObserver() {
   }, observerOptions);
 
   sections.forEach(sec => observer.observe(sec));
+}
+
+// ==========================================================================
+// AI EDITOR'S PICKS WIDGET & RENDER PIPELINE
+// ==========================================================================
+
+function switchPanelState(stateName) {
+  if (stateName === 'trigger') {
+    aiTriggerPanel.style.display = 'block';
+    aiLoadingPanel.style.display = 'none';
+    aiReadyPanel.style.display = 'none';
+    aiStatusBadge.textContent = 'Ready to generate';
+  } else if (stateName === 'loading') {
+    aiTriggerPanel.style.display = 'none';
+    aiLoadingPanel.style.display = 'block';
+    aiReadyPanel.style.display = 'none';
+    aiStatusBadge.textContent = 'Analyzing headlines...';
+  } else if (stateName === 'ready') {
+    aiTriggerPanel.style.display = 'none';
+    aiLoadingPanel.style.display = 'none';
+    aiReadyPanel.style.display = 'block';
+    aiStatusBadge.textContent = 'Curated by AI Editor';
+  }
+}
+
+function renderTopPicksGrid() {
+  aiPicksGrid.innerHTML = '';
+  if (!state.topPicks || state.topPicks.length === 0) return;
+
+  state.topPicks.forEach((art, index) => {
+    const rank = index + 1;
+    const ratings = art.ratings || {};
+    const impact = ratings.impact || 0;
+    const importance = ratings.importance || 0;
+    const interest = ratings.interest || 0;
+    const depth = ratings.depth || 0;
+    const avgScore = (impact + importance + interest + depth) / 4;
+
+    const card = document.createElement('div');
+    card.className = 'ai-card';
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-label', `Read AI Pick #${rank}: ${art.headline || 'Untitled'}`);
+
+    // Card Top Section (Rank and Source Page Meta)
+    const cardTop = document.createElement('div');
+    cardTop.className = 'card-top';
+
+    const rankBadge = document.createElement('span');
+    rankBadge.className = 'card-badge';
+    rankBadge.textContent = `#${rank}`;
+    cardTop.appendChild(rankBadge);
+
+    const scoreMeta = document.createElement('span');
+    scoreMeta.className = 'card-meta';
+    scoreMeta.textContent = `Score: ${avgScore.toFixed(1)}/10`;
+    cardTop.appendChild(scoreMeta);
+
+    card.appendChild(cardTop);
+
+    // Headline
+    const headline = document.createElement('h3');
+    headline.className = 'card-headline';
+    headline.textContent = art.headline || 'Untitled Article';
+    card.appendChild(headline);
+
+    // AI Reason / Summary
+    if (art.reason) {
+      const reason = document.createElement('p');
+      reason.className = 'card-reason';
+      reason.textContent = art.reason;
+      card.appendChild(reason);
+    }
+
+    // Individual Sub-ratings Pill Container
+    const ratingsContainer = document.createElement('div');
+    ratingsContainer.className = 'card-ratings';
+
+    const tags = [
+      { label: 'IMP', val: impact },
+      { label: 'SIG', val: importance },
+      { label: 'INT', val: interest },
+      { label: 'DEP', val: depth }
+    ];
+
+    tags.forEach(t => {
+      const tag = document.createElement('span');
+      tag.className = 'score-tag';
+      tag.textContent = `${t.label}: ${t.val}`;
+      ratingsContainer.appendChild(tag);
+    });
+
+    card.appendChild(ratingsContainer);
+
+    // Click handler to launch reader
+    card.addEventListener('click', () => {
+      if (art.html_ref) {
+        openArticleReader(art.html_ref);
+      }
+    });
+
+    card.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && art.html_ref) {
+        e.preventDefault();
+        openArticleReader(art.html_ref);
+      }
+    });
+
+    aiPicksGrid.appendChild(card);
+  });
+}
+
+async function checkTopPicksCache(date, city) {
+  const requestDate = date;
+  const requestCity = city;
+
+  try {
+    const response = await fetch(`/api/top-headlines?date=${date}&city=${city}&generate=false&limit=${state.limit}`);
+    
+    // Race-condition check
+    if (state.date !== requestDate || state.city !== requestCity) {
+      return;
+    }
+
+    if (!response.ok) {
+      state.topPicksStatus = 'failed';
+      switchPanelState('trigger');
+      aiPicksSection.style.display = 'none';
+      return;
+    }
+
+    const data = await response.json();
+    
+    // Race-condition check
+    if (state.date !== requestDate || state.city !== requestCity) {
+      return;
+    }
+
+    if (data.status === 'ready') {
+      state.topPicksStatus = 'ready';
+      state.topPicks = data.top_articles || [];
+      renderTopPicksGrid();
+      switchPanelState('ready');
+      aiPicksSection.style.display = 'block';
+    } else {
+      state.topPicksStatus = 'not_generated';
+      state.topPicks = [];
+      switchPanelState('trigger');
+      aiPicksSection.style.display = 'block';
+    }
+  } catch (error) {
+    console.error("Error checking top picks cache:", error);
+    if (state.date === requestDate && state.city === requestCity) {
+      aiPicksSection.style.display = 'none';
+    }
+  }
+}
+
+async function generateTopPicks() {
+  const requestDate = state.date;
+  const requestCity = state.city;
+
+  switchPanelState('loading');
+  aiPicksSection.style.display = 'block';
+
+  try {
+    const response = await fetch(`/api/top-headlines?date=${requestDate}&city=${requestCity}&generate=true&limit=${state.limit}`);
+    
+    // Race-condition check
+    if (state.date !== requestDate || state.city !== requestCity) {
+      return;
+    }
+
+    if (!response.ok) {
+      throw new Error("API call failed");
+    }
+
+    const data = await response.json();
+    
+    // Race-condition check
+    if (state.date !== requestDate || state.city !== requestCity) {
+      return;
+    }
+
+    if (data.status === 'ready') {
+      state.topPicksStatus = 'ready';
+      state.topPicks = data.top_articles || [];
+      renderTopPicksGrid();
+      switchPanelState('ready');
+    } else {
+      throw new Error("Data not ready");
+    }
+  } catch (error) {
+    console.error("Error generating top picks:", error);
+    if (state.date === requestDate && state.city === requestCity) {
+      state.topPicksStatus = 'failed';
+      switchPanelState('trigger');
+      showBanner("Not able to generate AI picks right now");
+    }
+  }
 }
 
 // ==========================================================================

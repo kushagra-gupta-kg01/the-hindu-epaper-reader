@@ -1,7 +1,6 @@
 (function() {
   const resultsContainer = document.getElementById('test-results');
-  resultsContainer.innerHTML = '';
-  let failedTests = 0;
+  const tests = [];
 
   function assert(condition, message) {
     if (!condition) {
@@ -24,23 +23,12 @@
   }
 
   function test(name, fn) {
-    const testDiv = document.createElement('div');
-    testDiv.className = 'test-case';
-    
-    try {
-      fn();
-      testDiv.className += ' pass';
-      testDiv.textContent = `✓ ${name}`;
-    } catch (e) {
-      failedTests++;
-      testDiv.className += ' fail';
-      testDiv.innerHTML = `✗ ${name} <pre>${e.message}\n${e.stack}</pre>`;
-    }
-    
-    resultsContainer.appendChild(testDiv);
+    tests.push({ name, fn });
   }
 
-  // Define Tests
+  // ==========================================================================
+  // EXISTING CORE TESTS
+  // ==========================================================================
 
   test("getCleanSectionName maps raw pages to sections correctly", function() {
     assertEqual(getCleanSectionName("Front_Pg"), "Front Page");
@@ -99,17 +87,316 @@
     assertEqual(toggle, null, "The show-promos-toggle element should be removed from the DOM");
   });
 
+  // ==========================================================================
+  // NEW AI EDITOR'S PICKS TDD TESTS
+  // ==========================================================================
 
-  // Summary heading
-  const summaryHeader = document.createElement('h3');
-  summaryHeader.style.marginTop = '20px';
-  if (failedTests === 0) {
-    summaryHeader.style.color = '#137333';
-    summaryHeader.textContent = "All unit tests passed successfully!";
-  } else {
-    summaryHeader.style.color = '#c5221f';
-    summaryHeader.textContent = `${failedTests} unit test(s) failed.`;
+  // Test Case 1: State Variables Initialization
+  test("state object initializes topPicks and topPicksStatus correctly", function() {
+    assert(Array.isArray(state.topPicks), "state.topPicks should be an array");
+    assertEqual(state.topPicks.length, 0, "state.topPicks should start empty");
+    assertEqual(state.topPicksStatus, 'not_generated', "state.topPicksStatus should start as not_generated");
+  });
+
+  // Test Case 2: switchPanelState transitions
+  test("switchPanelState correctly toggles display properties of panels and updates status badge text", function() {
+    switchPanelState('trigger');
+    const triggerPanel = document.getElementById('ai-trigger-panel');
+    const loadingPanel = document.getElementById('ai-loading-panel');
+    const readyPanel = document.getElementById('ai-ready-panel');
+    const badge = document.getElementById('ai-status-badge');
+    
+    assertEqual(triggerPanel.style.display, 'block', "trigger panel should be block");
+    assertEqual(loadingPanel.style.display, 'none', "loading panel should be none");
+    assertEqual(readyPanel.style.display, 'none', "ready panel should be none");
+    assertEqual(badge.textContent, 'Ready to generate', "badge text should match trigger");
+
+    switchPanelState('loading');
+    assertEqual(triggerPanel.style.display, 'none');
+    assertEqual(loadingPanel.style.display, 'block');
+    assertEqual(readyPanel.style.display, 'none');
+    assertEqual(badge.textContent, 'Analyzing headlines...');
+
+    switchPanelState('ready');
+    assertEqual(triggerPanel.style.display, 'none');
+    assertEqual(loadingPanel.style.display, 'none');
+    assertEqual(readyPanel.style.display, 'block');
+    assertEqual(badge.textContent, 'Curated by AI Editor');
+  });
+
+  // Test Case 3: renderTopPicksGrid Card Builder
+  test("renderTopPicksGrid appends cards, calculates average scores, and binds openArticleReader", function() {
+    const originalPicks = state.topPicks;
+    const gridContainer = document.getElementById('ai-picks-grid');
+    assert(gridContainer !== null, "gridContainer mockup is required");
+
+    state.topPicks = [
+      {
+        id: "ART.1",
+        headline: "First Pick",
+        html_ref: "ref1.html",
+        reason: "Reason one.",
+        ratings: { impact: 9, importance: 8, interest: 7, depth: 8 }
+      },
+      {
+        id: "ART.2",
+        headline: "Second Pick",
+        html_ref: "ref2.html",
+        reason: "Reason two.",
+        ratings: { impact: 7, importance: 7, interest: 8, depth: 6 }
+      }
+    ];
+
+    let appendedChildren = [];
+    gridContainer.appendChild = function(el) {
+      appendedChildren.push(el);
+    };
+    gridContainer.innerHTML = '';
+
+    renderTopPicksGrid();
+
+    assertEqual(appendedChildren.length, 2, "Should append exactly 2 cards");
+    
+    const card1 = appendedChildren[0];
+    assert(card1.innerHTML.includes('#1'), "Card 1 should show rank #1");
+    assert(card1.innerHTML.includes('Score: 8.0'), "Card 1 score should be 8.0");
+    assert(card1.innerHTML.includes('First Pick'), "Card 1 headline missing");
+    assert(card1.innerHTML.includes('Reason one.'), "Card 1 reason missing");
+    assertEqual(typeof card1.onclick, 'function', "Card 1 click handler should be bound");
+
+    state.topPicks = originalPicks;
+  });
+
+  // Test Case 4: Cache State Handler Integration
+  test("checkTopPicksCache updates state, display containers, and panel states on status results", async function() {
+    const originalFetch = global.fetch;
+    const originalPicks = state.topPicks;
+    const picksSection = document.getElementById('ai-picks-section');
+
+    global.fetch = async function(url) {
+      assert(url.includes('/api/top-headlines'), "Should query top-headlines");
+      return {
+        ok: true,
+        json: async () => ({
+          status: 'ready',
+          top_articles: [{
+            id: "ART.1",
+            headline: "First Pick",
+            html_ref: "art1.html",
+            reason: "Reason text",
+            ratings: { impact: 1, importance: 1, interest: 1, depth: 1 }
+          }]
+        })
+      };
+    };
+
+    state.date = "2026-05-28";
+    state.city = "th_delhi";
+
+    await checkTopPicksCache("2026-05-28", "th_delhi");
+
+    assertEqual(state.topPicksStatus, 'ready');
+    assertEqual(state.topPicks.length, 1);
+    assertEqual(picksSection.style.display, 'block');
+
+    global.fetch = originalFetch;
+    state.topPicks = originalPicks;
+  });
+
+  // Test Case 5: generateTopPicks successful call
+  test("generateTopPicks performs fetch, updates state, and renders picks on success", async function() {
+    const originalFetch = global.fetch;
+    const originalPicks = state.topPicks;
+    const picksSection = document.getElementById('ai-picks-section');
+    const loadingPanel = document.getElementById('ai-loading-panel');
+    const readyPanel = document.getElementById('ai-ready-panel');
+
+    global.fetch = async function(url) {
+      assert(url.includes('generate=true'), "Should request generation");
+      return {
+        ok: true,
+        json: async () => ({
+          status: 'ready',
+          top_articles: [{
+            id: "ART.1",
+            headline: "First Pick",
+            html_ref: 'art1.html',
+            ratings: { impact: 9, importance: 8, interest: 7, depth: 8 },
+            reason: "test"
+          }]
+        })
+      };
+    };
+
+    state.date = "2026-05-28";
+    state.city = "th_delhi";
+
+    await generateTopPicks();
+
+    assertEqual(state.topPicksStatus, 'ready');
+    assertEqual(state.topPicks.length, 1);
+    assertEqual(picksSection.style.display, 'block');
+    assertEqual(readyPanel.style.display, 'block');
+    assertEqual(loadingPanel.style.display, 'none');
+
+    global.fetch = originalFetch;
+    state.topPicks = originalPicks;
+  });
+
+  // Test Case 6: generateTopPicks failure path
+  test("generateTopPicks fallback to trigger panel and displays error banner on API failure", async function() {
+    const originalFetch = global.fetch;
+    const notificationText = document.getElementById('notification-text');
+    const notificationBanner = document.getElementById('notification-banner');
+    
+    notificationText.textContent = "";
+    notificationBanner.style.display = "none";
+
+    global.fetch = async function(url) {
+      return {
+        ok: false,
+        json: async () => ({ detail: "Rate limit exceeded" })
+      };
+    };
+
+    state.date = "2026-05-28";
+    state.city = "th_delhi";
+
+    await generateTopPicks();
+
+    assertEqual(state.topPicksStatus, 'failed');
+    assertEqual(document.getElementById('ai-trigger-panel').style.display, 'block');
+    assertEqual(notificationText.textContent, "Not able to generate AI picks right now");
+    assertEqual(notificationBanner.style.display, 'flex');
+
+    global.fetch = originalFetch;
+  });
+
+  // Test Case 7: state.limit initialization
+  test("state.limit initializes to 10 by default", function() {
+    assertEqual(state.limit, 10, "state.limit should be 10 by default");
+  });
+
+  // Test Case 8: Limit Button Interaction updates state and triggers cache check
+  test("clicking limit button updates state.limit and triggers checkTopPicksCache if ready", async function() {
+    const originalFetch = global.fetch;
+    let fetchCalled = false;
+    let fetchedUrl = "";
+
+    global.fetch = async function(url) {
+      fetchCalled = true;
+      fetchedUrl = url;
+      return {
+        ok: true,
+        json: async () => ({
+          status: 'ready',
+          top_articles: []
+        })
+      };
+    };
+
+    const originalStatus = state.topPicksStatus;
+    state.topPicksStatus = 'ready';
+    state.date = "2026-05-28";
+    state.city = "th_delhi";
+
+    // Call initApp to bind event listeners
+    initApp();
+
+    const limitBtns = document.querySelectorAll('#ai-limit-group .ai-limit-btn');
+    const btn20 = limitBtns[1]; // button with data-limit=20
+    assertEqual(btn20.getAttribute('data-limit'), '20');
+
+    // Simulate click
+    btn20.dispatchEvent({ type: 'click' });
+
+    assertEqual(state.limit, 20, "state.limit should update to 20");
+    assertEqual(btn20.className, 'active', "clicked button should become active");
+    assert(fetchCalled, "fetch should be called via checkTopPicksCache");
+    assert(fetchedUrl.includes('limit=20'), "fetched URL should contain limit=20");
+
+    // Restore
+    global.fetch = originalFetch;
+    state.topPicksStatus = originalStatus;
+  });
+
+  // Test Case 9: fetch calls append limit query parameter
+  test("checkTopPicksCache and generateTopPicks append limit to the fetch API requests", async function() {
+    const originalFetch = global.fetch;
+    let requestedUrl = "";
+
+    global.fetch = async function(url) {
+      requestedUrl = url;
+      return {
+        ok: true,
+        json: async () => ({
+          status: 'ready',
+          top_articles: []
+        })
+      };
+    };
+
+    state.limit = 25;
+    state.date = "2026-05-28";
+    state.city = "th_delhi";
+
+    await checkTopPicksCache("2026-05-28", "th_delhi");
+    assert(requestedUrl.includes('limit=25'), `Url should contain limit=25: ${requestedUrl}`);
+
+    await generateTopPicks();
+    assert(requestedUrl.includes('limit=25'), `Url should contain limit=25: ${requestedUrl}`);
+
+    global.fetch = originalFetch;
+  });
+
+  // ==========================================================================
+  // RUNNER ENGINE
+  // ==========================================================================
+
+  async function runAllTests() {
+    resultsContainer.innerHTML = '';
+    let failedTests = 0;
+
+    for (const t of tests) {
+      const testDiv = document.createElement('div');
+      testDiv.className = 'test-case';
+      try {
+        await t.fn();
+        testDiv.className += ' pass';
+        testDiv.textContent = `✓ ${t.name}`;
+      } catch (e) {
+        failedTests++;
+        testDiv.className += ' fail';
+        testDiv.innerHTML = `✗ ${t.name} <pre>${e.message}\n${e.stack}</pre>`;
+      }
+      resultsContainer.appendChild(testDiv);
+    }
+
+    // Summary heading
+    const summaryHeader = document.createElement('h3');
+    summaryHeader.style.marginTop = '20px';
+    if (failedTests === 0) {
+      summaryHeader.style.color = '#137333';
+      summaryHeader.textContent = "All unit tests passed successfully!";
+    } else {
+      summaryHeader.style.color = '#c5221f';
+      summaryHeader.textContent = `${failedTests} unit test(s) failed.`;
+    }
+    resultsContainer.insertBefore(summaryHeader, resultsContainer.firstChild);
+
+    return failedTests;
   }
-  resultsContainer.insertBefore(summaryHeader, resultsContainer.firstChild);
+
+  // Expose globally
+  window.runAllTests = runAllTests;
+
+  // Auto-run in browser, but do not auto-run in Node test runner
+  if (typeof process === 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => runAllTests());
+    } else {
+      runAllTests();
+    }
+  }
 
 })();

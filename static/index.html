@@ -76,6 +76,65 @@
     </div>
   </nav>
 
+  <!-- AI Editor's Picks Section -->
+  <section id="ai-picks-section" class="ai-picks-section" style="display: none;">
+    <div class="ai-header-bar">
+      <h2 class="ai-title">✨ Editor's Picks</h2>
+      <div class="ai-header-controls">
+        <label class="ai-limit-label">Show</label>
+        <div class="ai-limit-group" id="ai-limit-group">
+          <button class="ai-limit-btn active" data-limit="10">10</button>
+          <button class="ai-limit-btn" data-limit="20">20</button>
+          <button class="ai-limit-btn" data-limit="25">25</button>
+        </div>
+        <span class="ai-status-badge" id="ai-status-badge">Ready to generate</span>
+      </div>
+    </div>
+
+    <!-- State A: Trigger Widget (Picks not generated yet) -->
+    <div id="ai-trigger-panel" class="ai-panel">
+      <div class="ai-trigger-content">
+        <p class="ai-trigger-desc">
+          Let the AI Editorial assistant analyze today's newspaper articles to select and rate the top stories based on impact, importance, reader interest, and depth.
+        </p>
+        <div class="ai-trigger-actions">
+          <button class="ai-gen-btn" id="ai-generate-btn">
+            <span class="ai-sparkle-icon">✨</span> Generate Curated Picks
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- State B: Shimmer Skeleton Loader (During API call) -->
+    <div id="ai-loading-panel" class="ai-panel" style="display: none;">
+      <div class="ai-shimmer-grid">
+        <div class="ai-shimmer-card">
+          <div class="ai-shimmer-bar shimmer-bar-rank"></div>
+          <div class="ai-shimmer-bar shimmer-bar-title"></div>
+          <div class="ai-shimmer-bar shimmer-bar-desc"></div>
+          <div class="ai-shimmer-bar shimmer-bar-meta"></div>
+        </div>
+        <div class="ai-shimmer-card">
+          <div class="ai-shimmer-bar shimmer-bar-rank"></div>
+          <div class="ai-shimmer-bar shimmer-bar-title"></div>
+          <div class="ai-shimmer-bar shimmer-bar-desc"></div>
+          <div class="ai-shimmer-bar shimmer-bar-meta"></div>
+        </div>
+        <div class="ai-shimmer-card">
+          <div class="ai-shimmer-bar shimmer-bar-rank"></div>
+          <div class="ai-shimmer-bar shimmer-bar-title"></div>
+          <div class="ai-shimmer-bar shimmer-bar-desc"></div>
+          <div class="ai-shimmer-bar shimmer-bar-meta"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- State C: Ready Showcase Grid (Picks generated & enriched) -->
+    <div id="ai-ready-panel" class="ai-panel" style="display: none;">
+      <div id="ai-picks-grid" class="ai-picks-grid"></div>
+    </div>
+  </section>
+
   <!-- Main Newspaper Headlines Area -->
   <main id="headlines-container" class="headlines-container">
     <div class="headlines-loading" id="main-loader" role="alert" aria-busy="true">

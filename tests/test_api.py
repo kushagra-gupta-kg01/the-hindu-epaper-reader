@@ -212,5 +212,284 @@ def test_get_article_internal_error_500():
         assert "Internal server error: File system error" in response.json()["detail"]
 
 
+def test_top_headlines_validation():
+    # 1. Invalid date format
+    response = client.get("/api/top-headlines?date=28-05-2026&city=th_delhi")
+    assert response.status_code == 422
+    
+    # 2. Invalid limit (negative)
+    response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&limit=0")
+    assert response.status_code == 422
+    assert "limit must be a positive integer" in response.json()["detail"]
+
+
+def test_top_headlines_cache_hit():
+    mock_top_data = {
+        "status": "ready",
+        "top_articles": [
+            {"id": "art_1", "headline": "Headline 1", "ratings": {"impact": 9}, "reason": "Reason 1"},
+            {"id": "art_2", "headline": "Headline 2", "ratings": {"impact": 8}, "reason": "Reason 2"},
+            {"id": "art_3", "headline": "Headline 3", "ratings": {"impact": 7}, "reason": "Reason 3"}
+        ]
+    }
+    with patch("src.cache.top_exists", return_value=True) as mock_exists, \
+         patch("src.cache.read_top", return_value=mock_top_data) as mock_read:
+         
+        # When we fetch with limit=2
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&limit=2")
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["status"] == "ready"
+        # Verify sliced list
+        assert len(data["top_articles"]) == 2
+        assert data["top_articles"][0]["id"] == "art_1"
+        assert data["top_articles"][1]["id"] == "art_2"
+
+
+def test_top_headlines_generate_false():
+    with patch("src.cache.top_exists", return_value=False):
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi")
+        assert response.status_code == 200
+        assert response.json() == {"status": "not_generated"}
+
+
+def test_top_headlines_generate_zero_articles():
+    # GIVEN main headlines has zero articles
+    mock_headlines = {"pages": [{"articles": []}, {"articles": []}]}
+    with patch("src.cache.top_exists", return_value=False), \
+         patch("src.cache.exists", return_value=True), \
+         patch("src.cache.read", return_value=mock_headlines):
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
+        assert response.status_code == 400
+        assert "No articles available in this edition" in response.json()["detail"]
+
+
+def test_top_headlines_generate_success():
+    # GIVEN cache miss, main headlines present, and LLM is successful
+    mock_headlines = {
+        "pages": [
+            {
+                "page_num": 1,
+                "page_name": "Front_Pg",
+                "articles": [
+                    {"id": "GO1G1NQTF.1", "headline": "Supreme Court Ruling", "html_ref": "ref1.html", "images": []},
+                    {"id": "art_2", "headline": "Local News", "html_ref": "ref2.html", "images": ["img.jpg"]}
+                ]
+            }
+        ]
+    }
+    mock_llm_result = [
+        # Test case-insensitivity: LLM outputs lowercased ID and omits suffix
+        {"id": "go1g1nqtf", "ratings": [9, 10, 8, 7], "reason": "SC election ruling."}
+    ]
+
+    with patch("src.cache.top_exists", return_value=False), \
+         patch("src.cache.exists", return_value=True), \
+         patch("src.cache.read", return_value=mock_headlines), \
+         patch("src.llm.rank_headlines", return_value=mock_llm_result) as mock_rank, \
+         patch("src.cache.write_top", return_value=True) as mock_write:
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true&limit=1")
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["status"] == "ready"
+        assert len(data["top_articles"]) == 1
+        
+        # Verify validation & enrichment: matches original ID with casing and suffix preserved
+        article = data["top_articles"][0]
+        assert article["id"] == "GO1G1NQTF.1"
+        assert article["headline"] == "Supreme Court Ruling"
+        assert article["html_ref"] == "ref1.html"
+        assert article["ratings"] == {
+            "impact": 9,
+            "importance": 10,
+            "interest": 8,
+            "depth": 7
+        }
+        assert article["reason"] == "SC election ruling."
+        
+        # Verify it wrote the entire enriched top list (un-sliced) to cache
+        mock_write.assert_called_once()
+        args, kwargs = mock_write.call_args
+        assert len(args[2]["top_articles"]) == 1
+
+
+def test_top_headlines_generate_missing_api_key_500():
+    mock_headlines = {"pages": [{"articles": [{"id": "a1", "headline": "Headline"}]}]}
+    with patch("src.cache.top_exists", return_value=False), \
+         patch("src.cache.exists", return_value=True), \
+         patch("src.cache.read", return_value=mock_headlines), \
+         patch("src.llm.rank_headlines", side_effect=ValueError("OpenRouter API Key is not configured on the server.")):
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
+        assert response.status_code == 500
+        assert "OpenRouter API Key is not configured" in response.json()["detail"]
+
+
+def test_top_headlines_generate_llm_error_502():
+    mock_headlines = {"pages": [{"articles": [{"id": "a1", "headline": "Headline"}]}]}
+    with patch("src.cache.top_exists", return_value=False), \
+         patch("src.cache.exists", return_value=True), \
+         patch("src.cache.read", return_value=mock_headlines), \
+         patch("src.llm.rank_headlines", side_effect=ValueError("OpenRouter API Error: Rate limit")):
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
+        assert response.status_code == 502
+        assert "AI Generation failed: OpenRouter API Error: Rate limit" in response.json()["detail"]
+
+
+def test_top_headlines_generate_empty_selection_502():
+    mock_headlines = {"pages": [{"articles": [{"id": "a1", "headline": "Headline"}]}]}
+    # GIVEN the LLM returned empty list, or entirely hallucinated list (empty after validation)
+    with patch("src.cache.top_exists", return_value=False), \
+         patch("src.cache.exists", return_value=True), \
+         patch("src.cache.read", return_value=mock_headlines), \
+         patch("src.llm.rank_headlines", return_value=[]):
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
+        assert response.status_code == 502
+        assert "AI returned an empty selection list" in response.json()["detail"]
+
+
+def test_top_headlines_self_healing_success():
+    # GIVEN main headlines cache is missing (exists=False)
+    mock_headlines = {
+        "pages": [{"articles": [{"id": "art_1", "headline": "Headline"}]}],
+        "issue_id": "186654",
+        "date": "2026-05-28",
+        "city": "th_delhi"
+    }
+    with patch("src.cache.top_exists", return_value=False), \
+         patch("src.cache.exists", return_value=False), \
+         patch("src.service.get_headlines", return_value=mock_headlines) as mock_get_h, \
+         patch("src.llm.rank_headlines", return_value=[{"id": "art_1", "ratings": [1,2,3,4], "reason": "Reason"}]), \
+         patch("src.cache.write_top", return_value=True):
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
+        assert response.status_code == 200
+        mock_get_h.assert_called_once_with("2026-05-28", "th_delhi")
+
+
+def test_top_headlines_self_healing_value_error_400():
+    with patch("src.cache.top_exists", return_value=False), \
+         patch("src.cache.exists", return_value=False), \
+         patch("src.service.get_headlines", side_effect=ValueError("Invalid city ID")):
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=invalid_city&generate=true")
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid city ID"
+
+
+def test_top_headlines_self_healing_outage_502():
+    with patch("src.cache.top_exists", return_value=False), \
+         patch("src.cache.exists", return_value=False), \
+         patch("src.service.get_headlines", side_effect=requests.RequestException("Connection refused")):
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
+        assert response.status_code == 502
+        assert "Unable to fetch newspaper data from server" in response.json()["detail"]
+
+
+def test_normalize_id_empty():
+    from api.index import normalize_id
+    assert normalize_id(None) == ""
+    assert normalize_id("") == ""
+
+
+def test_top_headlines_self_healing_internal_error_500():
+    with patch("src.cache.top_exists", return_value=False), \
+         patch("src.cache.exists", return_value=False), \
+         patch("src.service.get_headlines", side_effect=RuntimeError("DB error")):
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
+        assert response.status_code == 500
+        assert "Internal server error: DB error" in response.json()["detail"]
+
+
+def test_top_headlines_llm_request_exception_502():
+    mock_headlines = {"pages": [{"articles": [{"id": "a1", "headline": "Headline"}]}]}
+    with patch("src.cache.top_exists", return_value=False), \
+         patch("src.cache.exists", return_value=True), \
+         patch("src.cache.read", return_value=mock_headlines), \
+         patch("src.llm.rank_headlines", side_effect=requests.RequestException("Timeout error")):
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
+        assert response.status_code == 502
+        assert "AI Generation failed: Timeout error" in response.json()["detail"]
+
+
+def test_top_headlines_llm_generic_exception_502():
+    mock_headlines = {"pages": [{"articles": [{"id": "a1", "headline": "Headline"}]}]}
+    with patch("src.cache.top_exists", return_value=False), \
+         patch("src.cache.exists", return_value=True), \
+         patch("src.cache.read", return_value=mock_headlines), \
+         patch("src.llm.rank_headlines", side_effect=RuntimeError("Unexpected error")):
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
+        assert response.status_code == 502
+        assert "AI Generation failed: Unexpected error" in response.json()["detail"]
+
+
+def test_top_headlines_llm_missing_id_skipped():
+    mock_headlines = {
+        "pages": [
+            {
+                "page_num": 1,
+                "articles": [{"id": "GO1G1NQTF.1", "headline": "Headline"}]
+            }
+        ]
+    }
+    mock_llm_result = [
+        {"id": None, "ratings": [1, 2, 3, 4], "reason": "No ID"},
+        {"id": "go1g1nqtf", "ratings": [9, 10, 8, 7], "reason": "Valid"}
+    ]
+    with patch("src.cache.top_exists", return_value=False), \
+         patch("src.cache.exists", return_value=True), \
+         patch("src.cache.read", return_value=mock_headlines), \
+         patch("src.llm.rank_headlines", return_value=mock_llm_result), \
+         patch("src.cache.write_top", return_value=True):
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["top_articles"]) == 1
+        assert data["top_articles"][0]["id"] == "GO1G1NQTF.1"
+
+
+def test_top_headlines_llm_invalid_ratings_fallback():
+    mock_headlines = {
+        "pages": [
+            {
+                "page_num": 1,
+                "articles": [{"id": "GO1G1NQTF.1", "headline": "Headline"}]
+            }
+        ]
+    }
+    mock_llm_result = [
+        {"id": "go1g1nqtf", "ratings": None, "reason": "No ratings"},
+    ]
+    with patch("src.cache.top_exists", return_value=False), \
+         patch("src.cache.exists", return_value=True), \
+         patch("src.cache.read", return_value=mock_headlines), \
+         patch("src.llm.rank_headlines", return_value=mock_llm_result), \
+         patch("src.cache.write_top", return_value=True):
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["top_articles"]) == 1
+        assert data["top_articles"][0]["ratings"] == {
+            "impact": 0,
+            "importance": 0,
+            "interest": 0,
+            "depth": 0
+        }
+
+
+
+
 
 

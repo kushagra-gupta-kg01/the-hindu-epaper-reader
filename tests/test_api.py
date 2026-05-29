@@ -177,4 +177,40 @@ def test_get_article_utf8_decoding():
         assert "â" not in data["headline"]
 
 
+def test_get_article_ref_no_html():
+    with patch("src.scraper.fetch_article_html", return_value="<html><body><h1>Headline</h1></body></html>"):
+        response = client.get("/api/article?city=th_delhi&issue_id=186654&ref=foo+bar")
+        assert response.status_code == 200
+        assert response.json()["id"] == "bar"
+
+
+def test_get_headlines_value_error_400():
+    with patch("src.service.get_headlines", side_effect=ValueError("Invalid city ID")):
+        response = client.get("/api/headlines?date=2026-05-28&city=invalid_city")
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid city ID"
+
+
+def test_get_headlines_internal_error_500():
+    with patch("src.service.get_headlines", side_effect=RuntimeError("Some database error")):
+        response = client.get("/api/headlines?date=2026-05-28&city=th_delhi")
+        assert response.status_code == 500
+        assert "Internal server error: Some database error" in response.json()["detail"]
+
+
+def test_get_article_network_failure_502():
+    with patch("src.scraper.fetch_article_html", side_effect=requests.RequestException("Connection failed")):
+        response = client.get("/api/article?city=th_delhi&issue_id=186654&ref=foo+bar.html")
+        assert response.status_code == 502
+        assert "Unable to fetch article content from server: Connection failed" in response.json()["detail"]
+
+
+def test_get_article_internal_error_500():
+    with patch("src.scraper.fetch_article_html", side_effect=RuntimeError("File system error")):
+        response = client.get("/api/article?city=th_delhi&issue_id=186654&ref=foo+bar.html")
+        assert response.status_code == 500
+        assert "Internal server error: File system error" in response.json()["detail"]
+
+
+
 

@@ -106,3 +106,35 @@ def test_cache_directory_resolves_to_tmp_in_serverless():
             # Ensure standard cache is restored for other tests
             src.cache.clear("2026-05-27", "th_delhi")
             importlib.reload(src.cache)
+
+
+def test_cache_read_exception_returns_empty():
+    with patch("builtins.open", side_effect=OSError("Read error")):
+        assert read("2026-05-27", "th_delhi") == {}
+
+
+def test_cache_write_replace_exception_removes_temp_file():
+    with patch("os.makedirs"), \
+         patch("builtins.open"), \
+         patch("os.replace", side_effect=OSError("Replace error")), \
+         patch("os.path.exists", return_value=True), \
+         patch("os.remove") as mock_remove:
+        assert write("2026-05-27", "th_delhi", {"data": 1}) is False
+        mock_remove.assert_called_once()
+
+
+def test_cache_write_remove_exception_is_silenced():
+    with patch("os.makedirs"), \
+         patch("builtins.open"), \
+         patch("os.replace", side_effect=OSError("Replace error")), \
+         patch("os.path.exists", return_value=True), \
+         patch("os.remove", side_effect=OSError("Remove error")):
+        assert write("2026-05-27", "th_delhi", {"data": 1}) is False
+
+
+def test_cache_clear_remove_exception_is_silenced():
+    with patch("os.path.exists", return_value=True), \
+         patch("os.remove", side_effect=OSError("Delete error")):
+        # Should not raise any exception
+        clear("2026-05-27", "th_delhi")
+

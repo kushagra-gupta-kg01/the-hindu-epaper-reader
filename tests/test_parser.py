@@ -123,3 +123,72 @@ def test_parse_cciobjects_deduplicates_images():
     # Assert image is deduplicated (only appears once)
     assert article["images"] == ["Public/image1.jpg"]
 
+
+def test_parse_catalog_invalid_json():
+    with pytest.raises(ValueError) as excinfo:
+        parse_catalog("invalid{json", "th_delhi")
+    assert "Failed to parse catalog JSON" in str(excinfo.value)
+
+
+def test_parse_cciobjects_invalid_json():
+    with pytest.raises(ValueError) as excinfo:
+        parse_cciobjects("invalid{json")
+    assert "Failed to parse cciobjects JSON" in str(excinfo.value)
+
+
+def test_parse_cciobjects_nested_text_html_ref():
+    import json
+    mock_payload = {
+        "id": "test_issue_id",
+        "children": [
+            {
+                "kind": "Page",
+                "attributes": {"Name": "Opinion"},
+                "children": [
+                    {
+                        "kind": "Article",
+                        "id": "art_nested_text",
+                        "attributes": {
+                            "Name": "Nested Article",
+                            "Headline": "Nested Headline"
+                        },
+                        "content": [
+                            {"reference": "Public/some_image.jpg"}
+                        ],
+                        "children": [
+                            {
+                                "kind": "Text",
+                                "content": [
+                                    {"reference": "nested_article.html"}
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+    
+    result = parse_cciobjects(json.dumps(mock_payload))
+    pages = result["pages"]
+    assert len(pages) == 1
+    articles = pages[0]["articles"]
+    assert len(articles) == 1
+    assert articles[0]["html_ref"] == "nested_article.html"
+
+
+def test_parse_article_headline_no_nested_p():
+    html_content = """
+    <html>
+      <body>
+        <h1>Headline Text Direct</h1>
+        <div class="body">
+          <p>Body paragraph.</p>
+        </div>
+      </body>
+    </html>
+    """
+    article = parse_article(html_content, "art_1")
+    assert article["headline"] == "Headline Text Direct"
+
+

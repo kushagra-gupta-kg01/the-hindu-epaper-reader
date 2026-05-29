@@ -1,3 +1,0 @@
-.article-layer{width:100%;position:absolute;cursor:pointer}.focusable:focus{border:2px solid #2980b9}.article-layer-hover:hover{background-color:#2980b9;opacity:.1}
-
-/*# sourceMappingURL=ArticleLayer.2a48de1040d135d66634.css.map*/

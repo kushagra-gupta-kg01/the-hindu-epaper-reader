@@ -192,3 +192,76 @@ def test_parse_article_headline_no_nested_p():
     assert article["headline"] == "Headline Text Direct"
 
 
+def test_parse_cciobjects_filters_noise_articles():
+    import json
+    
+    # Construct a mock cciobjects payload containing both noise articles and valid news articles
+    mock_payload = {
+        "id": "12345",
+        "children": [
+            {
+                "kind": "Page",
+                "attributes": {"Name": "News Page"},
+                "children": [
+                    # Noise items (should be filtered)
+                    {"kind": "Article", "id": "noise_1", "attributes": {"Headline": "v3"}, "content": [{"reference": "1.html"}]},
+                    {"kind": "Article", "id": "noise_2", "attributes": {"Headline": "p2"}, "content": [{"reference": "2.html"}]},
+                    {"kind": "Article", "id": "noise_3", "attributes": {"Headline": "vertical1"}, "content": [{"reference": "3.html"}]},
+                    {"kind": "Article", "id": "noise_4", "attributes": {"Headline": "picture3"}, "content": [{"reference": "4.html"}]},
+                    {"kind": "Article", "id": "noise_5", "attributes": {"Headline": "14805"}, "content": [{"reference": "5.html"}]},
+                    {"kind": "Article", "id": "noise_6", "attributes": {"Headline": "23bg"}, "content": [{"reference": "6.html"}]},
+                    {"kind": "Article", "id": "noise_7", "attributes": {"Headline": "27HyNearby2"}, "content": [{"reference": "7.html"}]},
+                    {"kind": "Article", "id": "noise_8", "attributes": {"Headline": "27HyPointr"}, "content": [{"reference": "8.html"}]},
+                    {"kind": "Article", "id": "noise_9", "attributes": {"Headline": "promo"}, "content": [{"reference": "9.html"}]},
+                    {"kind": "Article", "id": "noise_10", "attributes": {"Headline": "promo3 (2)"}, "content": [{"reference": "10.html"}]},
+                    {"kind": "Article", "id": "noise_11", "attributes": {"Headline": "promo_lead_big"}, "content": [{"reference": "11.html"}]},
+                    {"kind": "Article", "id": "noise_12", "attributes": {"Headline": "TH28 promo vertical 1"}, "content": [{"reference": "12.html"}]},
+                    {"kind": "Article", "id": "noise_13", "attributes": {"Headline": "promo (2)"}, "content": [{"reference": "13.html"}]},
+                    {"kind": "Article", "id": "noise_14", "attributes": {"Headline": "SUDOKU"}, "content": [{"reference": "14.html"}]},
+                    {"kind": "Article", "id": "noise_15", "attributes": {"Headline": "Sudoku_solution"}, "content": [{"reference": "15.html"}]},
+                    {"kind": "Article", "id": "noise_16", "attributes": {"Headline": "text_feedback"}, "content": [{"reference": "16.html"}]},
+                    {"kind": "Article", "id": "noise_17", "attributes": {"Headline": "scoreboard"}, "content": [{"reference": "17.html"}]},
+                    {"kind": "Article", "id": "noise_18", "attributes": {"Headline": "the results"}, "content": [{"reference": "18.html"}]},
+                    {"kind": "Article", "id": "noise_19", "attributes": {"Headline": "live telecast"}, "content": [{"reference": "19.html"}]},
+                    {"kind": "Article", "id": "noise_20", "attributes": {"Headline": "ASKUS"}, "content": [{"reference": "20.html"}]},
+                    {"kind": "Article", "id": "noise_21", "attributes": {"Headline": "BIG SHOT"}, "content": [{"reference": "21.html"}]},
+                    {"kind": "Article", "id": "noise_22", "attributes": {"Headline": "The DAILY QUIZ"}, "content": [{"reference": "22.html"}]},
+                    {"kind": "Article", "id": "noise_23", "attributes": {"Headline": "Former Prime Minister ... Here is a quiz on ..."}, "content": [{"reference": "23.html"}]},
+                    {"kind": "Article", "id": "noise_24", "attributes": {"Headline": " \xa0 SUDOKU \n "}, "content": [{"reference": "24.html"}]},
+                    {"kind": "Article", "id": "noise_25", "attributes": {"Headline": ""}, "content": [{"reference": "25.html"}]},
+                    {"kind": "Article", "id": "noise_26", "attributes": {"Headline": "   \n  "}, "content": [{"reference": "26.html"}]},
+                    
+                    # Valid headlines (should be kept)
+                    {"kind": "Article", "id": "valid_1", "attributes": {"Headline": "SC upholds SIR, says it is EC's constitutional duty"}, "content": [{"reference": "v1.html"}]},
+                    {"kind": "Article", "id": "valid_2", "attributes": {"Headline": "UPSC releases provisional answer key of Prelims exam"}, "content": [{"reference": "v2.html"}]},
+                    {"kind": "Article", "id": "valid_3", "attributes": {"Headline": "3 doctors held"}, "content": [{"reference": "v3.html"}]},
+                    {"kind": "Article", "id": "valid_4", "attributes": {"Headline": "10 killed in accident"}, "content": [{"reference": "v4.html"}]},
+                    {"kind": "Article", "id": "valid_5", "attributes": {"Headline": "Promotion of trade negotiations"}, "content": [{"reference": "v5.html"}]},
+                    {"kind": "Article", "id": "valid_6", "attributes": {"Headline": "Promoting green energy"}, "content": [{"reference": "v6.html"}]},
+                    {"kind": "Article", "id": "valid_7", "attributes": {"Headline": "Fire breaks out in nearby building"}, "content": [{"reference": "v7.html"}]},
+                    {"kind": "Article", "id": "valid_8", "attributes": {"Headline": "Chennai school wins state quiz contest"}, "content": [{"reference": "v8.html"}]},
+                    {"kind": "Article", "id": "valid_9", "attributes": {"Headline": "5G rollout starts in metro cities"}, "content": [{"reference": "v9.html"}]},
+                    {"kind": "Article", "id": "valid_10", "attributes": {"Headline": "3D printing of organs"}, "content": [{"reference": "v10.html"}]},
+                    {"kind": "Article", "id": "valid_11", "attributes": {"Headline": "24x7 water supply assured"}, "content": [{"reference": "v11.html"}]},
+                    {"kind": "Article", "id": "valid_12", "attributes": {"Headline": " \xa0 5G rollout starts \n "}, "content": [{"reference": "v12.html"}]}
+                ]
+            }
+        ]
+    }
+    
+    result = parse_cciobjects(json.dumps(mock_payload))
+    pages = result["pages"]
+    assert len(pages) == 1
+    
+    articles = pages[0]["articles"]
+    # Verify that only the 12 valid articles are present
+    assert len(articles) == 12
+    
+    valid_ids = {art["id"] for art in articles}
+    assert valid_ids == {
+        "valid_1", "valid_2", "valid_3", "valid_4", "valid_5", "valid_6",
+        "valid_7", "valid_8", "valid_9", "valid_10", "valid_11", "valid_12"
+    }
+
+
+

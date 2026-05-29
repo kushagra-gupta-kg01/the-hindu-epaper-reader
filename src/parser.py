@@ -1,5 +1,56 @@
 import json
+import re
 from bs4 import BeautifulSoup
+
+NOISE_SUBSTRINGS = {
+    "page1", "sirpage", "stadiump-age", "daily quiz", "science quiz", 
+    "health quiz", "here is a quiz"
+}
+
+NOISE_EXACT = {
+    "sudoku", "scoreboard", "live telecast", "the results", "know your english",
+    "feedback", "rgladpage", "askus", "big shot"
+}
+
+def _is_noise_article(headline: str) -> bool:
+    if not headline:
+        return True
+    # Normalize all Unicode whitespace sequences (including \xa0) to single standard spaces
+    h_clean = " ".join(headline.lower().split())
+    if not h_clean:
+        return True
+    
+    # 1. Underscores (internal/layout references)
+    if "_" in h_clean:
+        return True
+        
+    # 2. Promos and day-specific layout codes (e.g., "promo3 (2)", "th28 promo")
+    if re.match(r"^promo(\s*(\d|_|\()|$)", h_clean):
+        return True
+    if re.match(r"^th\d+", h_clean):
+        return True
+        
+    # 3. Layout references: word followed by number (e.g. "vertical1", "picture3", "v3", "p2")
+    if re.match(r"^(vertical|picture|v|p)\d+$", h_clean):
+        return True
+        
+    # 4. Pure numbers or alphanumeric page templates (e.g. "14805", "23bg", "27HyPointr")
+    # Required minimum: 2 digits followed immediately by 2 letters (ignores 3D, 5G, 24x7)
+    if re.match(r"^\d+$", h_clean):
+        return True
+    if re.match(r"^\d{2,}[a-zA-Z]{2,}", h_clean):
+        return True
+        
+    # 5. Exact match layout words
+    if h_clean in NOISE_EXACT:
+        return True
+        
+    # 6. Specific layout substrings
+    if any(s in h_clean for s in NOISE_SUBSTRINGS):
+        return True
+        
+    return False
+
 
 def parse_catalog(catalog_json: str, city_key: str) -> str:
     try:
@@ -66,8 +117,8 @@ def parse_cciobjects(cciobjects_json: str) -> dict:
                         if html_ref:
                             break
                             
-            # We only keep the article if it has an HTML content file associated with it
-            if html_ref:
+            # We only keep the article if it has an HTML content file associated with it and is not noise
+            if html_ref and not _is_noise_article(art_headline or art_name):
                 # Parse associated images from content list and nested Photo structures
                 images = []
                 for c in child.get("content", []):

@@ -69,8 +69,7 @@ Below is the directory tree layout showing key files and directories:
 ├── api
 │   └── index.py                # FastAPI API endpoints, static assets mount
 ├── data/                       # Local disk cache folder (ignored in Git)
-├── experiments
-│   └── run_tests.js            # Node CLI unit test runner using DOM-mock context
+├── experiments/                 # Experimental scripts & prototypes (ignored in Git)
 ├── pytest.ini                  # Pytest configuration file
 ├── requirements.txt            # Python requirements (e.g., fastapi, requests, bs4, pytest-cov)
 ├── src
@@ -89,6 +88,7 @@ Below is the directory tree layout showing key files and directories:
 ├── tests
 │   ├── conftest.py             # Mock fixtures (catalog, cciobjects, article html)
 │   ├── fixtures/               # HTML/JSON static mock payloads
+│   ├── run_frontend_tests.js   # Node CLI frontend unit test runner (DOM-mock context)
 │   ├── test_api.py             # FastAPI routing and HTTP error checks
 │   ├── test_cache.py           # Cache read/write, TTL, and tmp directory checks
 │   ├── test_e2e.py             # Basic flow integrations
@@ -165,7 +165,7 @@ OPENROUTER_API_KEY="your_key_here" PYTHONPATH=. .venv/bin/pytest tests/
 ### B. Run Frontend JavaScript Logic Tests
 You can run the Javascript unit tests in your terminal using the Node CLI:
 ```bash
-node experiments/run_tests.js
+node tests/run_frontend_tests.js
 ```
 *Note: This script mocks the browser environment (global window, document selectors, local storage, and intersection observers) locally in plain Node.js to evaluate `static/app.js` and `static/tests.js` without any external node package dependencies.*
 

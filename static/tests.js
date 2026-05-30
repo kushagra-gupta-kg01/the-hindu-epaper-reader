@@ -350,6 +350,161 @@
   });
 
   // ==========================================================================
+  // BIONIC READING TDD TESTS
+  // ==========================================================================
+
+  // Test Case 1: Initial State & Preferences Loading
+  test("state initializes bionicReading and fixationPoint correctly from defaults/localStorage", function() {
+    localStorage.removeItem('bionic-enabled');
+    localStorage.removeItem('bionic-fixation');
+    
+    // Check initial state
+    assertEqual(state.bionicReading, false, "default bionicReading should be false");
+    assertEqual(state.fixationPoint, 3, "default fixationPoint should be 3");
+    
+    // Simulate stored settings
+    localStorage.setItem('bionic-enabled', 'true');
+    localStorage.setItem('bionic-fixation', '4');
+    
+    initApp();
+    
+    assertEqual(state.bionicReading, true, "bionicReading should load from storage as true");
+    assertEqual(state.fixationPoint, 4, "fixationPoint should load from storage as 4");
+    
+    localStorage.removeItem('bionic-enabled');
+    localStorage.removeItem('bionic-fixation');
+    initApp();
+  });
+
+  // Test Case 2: UI Toggle Event Handler & Panel Display Toggle
+  test("clicking bionic toggle updates state, label, localStorage, and shows fixation dropdown", function() {
+    const toggleBtn = document.getElementById('bionic-toggle-btn');
+    const strengthCtrl = document.getElementById('fixation-control');
+    
+    assert(toggleBtn !== null, "toggleBtn mock is required");
+    assert(strengthCtrl !== null, "strengthCtrl mock is required");
+    
+    state.bionicReading = false;
+    toggleBtn.textContent = "Bionic: Off";
+    strengthCtrl.style.display = "none";
+    
+    toggleBtn.dispatchEvent({ type: 'click' });
+    
+    assertEqual(state.bionicReading, true, "state.bionicReading should toggle to true");
+    assertEqual(toggleBtn.textContent, "Bionic: On", "Button label should update");
+    assertEqual(localStorage.getItem('bionic-enabled'), 'true', "localStorage should sync");
+    assertEqual(strengthCtrl.style.display, 'inline-block', "Fixation control panel should be visible");
+  });
+
+  // Test Case 3: Fixation Selection Change Handler
+  test("changing fixation selection dropdown updates state.fixationPoint and syncs to localStorage", function() {
+    const selectEl = document.getElementById('bionic-fixation-select');
+    assert(selectEl !== null, "selectEl mock is required");
+    
+    selectEl.value = "2";
+    selectEl.dispatchEvent({ type: 'change' });
+    
+    assertEqual(state.fixationPoint, 2, "state.fixationPoint should be 2");
+    assertEqual(localStorage.getItem('bionic-fixation'), '2', "localStorage should update");
+  });
+
+  // Test Case 4: Text Rendering & Highlight Formatting (DOM Verification)
+  test("renderArticleContent applies textVide formatting when enabled, and textContent when disabled", function() {
+    const readerBody = document.getElementById('reader-body');
+    assert(readerBody !== null, "readerBody mock is required");
+    
+    state.activeArticleData = {
+      headline: "Test Headline",
+      body: ["Bionic Reading test."]
+    };
+    
+    state.bionicReading = true;
+    state.fixationPoint = 3;
+    
+    renderArticleContent();
+    
+    const paragraphs = readerBody.children;
+    console.log("DEBUG: paragraphs[0].innerHTML =", paragraphs[0] ? paragraphs[0].innerHTML : "undefined");
+    assert(paragraphs.length > 0, "Paragraph should be rendered");
+    assert(paragraphs[0].innerHTML.includes('<b>Bio</b>nic'), "Should contain bolded fixation anchors");
+    
+    state.bionicReading = false;
+    renderArticleContent();
+    assertEqual(paragraphs[0].innerHTML, "Bionic Reading test.", "Paragraph should render as clean text");
+  });
+
+  // Test Case 5: HTML Escaping (XSS Prevention) Verification
+  test("renderArticleContent escapes HTML tags in body paragraphs to prevent XSS", function() {
+    const readerBody = document.getElementById('reader-body');
+    assert(readerBody !== null);
+    
+    state.activeArticleData = {
+      headline: "XSS Test",
+      body: ["<script>alert(1)</script>Safe text"]
+    };
+    state.bionicReading = true;
+    renderArticleContent();
+    
+    const paragraphs = readerBody.children;
+    assert(paragraphs.length > 0);
+    assert(!paragraphs[0].innerHTML.includes('<script>'), "Should escape <script> to prevent execution");
+    assert(paragraphs[0].innerHTML.includes('&lt;') && paragraphs[0].innerHTML.includes('&gt;'), "Should convert tags to entities");
+  });
+
+  // ==========================================================================
+  // GUTENBERG FLAGSHIP THEME TDD TESTS
+  // ==========================================================================
+
+  // Test Case 1: state initializes default paperStyle to ivory
+  test("state initializes default paperStyle to ivory", function() {
+    assert(state.paperStyle !== undefined, "state.paperStyle should be defined");
+  });
+
+  // Test Case 2: applying theme-gutenberg updates document element classes and shows controls
+  test("applying theme-gutenberg updates document element classes and shows controls", function() {
+    const subcontrols = document.getElementById('gutenberg-subcontrols');
+    assert(subcontrols !== null, "gutenberg-subcontrols element is required");
+
+    state.theme = 'theme-gutenberg';
+    state.paperStyle = 'paper-sepia';
+    
+    applyTheme('theme-gutenberg');
+    
+    assert(document.documentElement.classList.contains('theme-gutenberg'), "html element should have theme-gutenberg class");
+    assert(document.documentElement.classList.contains('paper-sepia'), "html element should have paper-sepia class");
+    assertEqual(subcontrols.style.display, 'flex', "Gutenberg controls should be visible with display: flex");
+  });
+
+  // Test Case 3: syncPaperUI updates active classes on paper sub-selector buttons
+  test("syncPaperUI updates active classes on paper sub-selector buttons", function() {
+    const paperBtns = document.querySelectorAll('#gutenberg-subcontrols .ctrl-btn');
+    assert(paperBtns.length >= 3, "There should be at least 3 paper buttons");
+    
+    state.paperStyle = 'paper-white';
+    syncPaperUI();
+    
+    const btnWhite = Array.from(paperBtns).find(b => b.getAttribute('data-paper') === 'paper-white');
+    const btnIvory = Array.from(paperBtns).find(b => b.getAttribute('data-paper') === 'paper-ivory');
+    
+    assert(btnWhite.className.includes('active'), "Active button should have active class");
+    assert(!btnIvory.className.includes('active'), "Inactive button should not have active class");
+  });
+
+  // Test Case 4: switching away from theme-gutenberg hides paper sub-controls and resets paper classes
+  test("switching away from theme-gutenberg hides paper sub-controls and resets paper classes", function() {
+    const subcontrols = document.getElementById('gutenberg-subcontrols');
+    
+    applyTheme('theme-folio');
+    
+    assert(document.documentElement.classList.contains('theme-folio'));
+    assert(!document.documentElement.classList.contains('theme-gutenberg'));
+    assert(!document.documentElement.classList.contains('paper-ivory'));
+    assert(!document.documentElement.classList.contains('paper-white'));
+    assert(!document.documentElement.classList.contains('paper-sepia'));
+    assertEqual(subcontrols.style.display, 'none', "Gutenberg controls should be hidden");
+  });
+
+  // ==========================================================================
   // RUNNER ENGINE
   // ==========================================================================
 

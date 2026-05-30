@@ -84,8 +84,8 @@ def test_llm_success(sample_headlines):
         # Verify call parameters
         args, kwargs = mock_post.call_args
         assert kwargs["timeout"] == 8
-        assert "z-ai/glm-4.5-air:free" in kwargs["json"]["model"]
-        assert kwargs["json"]["models"][0] == "z-ai/glm-4.5-air:free"
+        assert "openrouter/owl-alpha" in kwargs["json"]["model"]
+        assert kwargs["json"]["models"][0] == "openrouter/owl-alpha"
         assert kwargs["json"]["response_format"] == {"type": "json_object"}
         assert "mock_secret_key" in kwargs["headers"]["Authorization"]
 

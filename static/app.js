@@ -14,7 +14,11 @@ const state = {
   focusTrigger: null,
   topPicks: [],
   topPicksStatus: 'not_generated',
-  limit: 10
+  limit: 10,
+  bionicReading: false,
+  fixationPoint: 3,
+  activeArticleData: null,
+  paperStyle: 'paper-ivory'
 };
 
 // DOM Elements
@@ -46,6 +50,10 @@ const aiReadyPanel = document.getElementById('ai-ready-panel');
 const aiPicksGrid = document.getElementById('ai-picks-grid');
 const aiGenerateBtn = document.getElementById('ai-generate-btn');
 const aiLimitBtns = document.querySelectorAll('#ai-limit-group .ai-limit-btn');
+
+const bionicToggleBtn = document.getElementById('bionic-toggle-btn');
+const bionicFixationSelect = document.getElementById('bionic-fixation-select');
+const fixationControl = document.getElementById('fixation-control');
 
 // ==========================================================================
 // UTILITY FUNCTIONS
@@ -85,6 +93,30 @@ function isNoiseArticle(headline) {
   if (h.includes("page1") || h.includes("sirpage") || h.includes("stadiump-age")) return true;
   if (/^\d+$/.test(h)) return true; // Matches pure page markers e.g. "14805"
   return false;
+}
+
+// Escape HTML special characters to prevent XSS
+function escapeHTML(str) {
+  if (!str) return '';
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Synchronize Bionic Reading UI options panel
+function syncBionicUI() {
+  if (bionicToggleBtn) {
+    bionicToggleBtn.textContent = state.bionicReading ? "Bionic: On" : "Bionic: Off";
+    if (state.bionicReading) {
+      bionicToggleBtn.classList.add('active');
+    } else {
+      bionicToggleBtn.classList.remove('active');
+    }
+  }
+  if (fixationControl) {
+    fixationControl.style.display = state.bionicReading ? 'inline-block' : 'none';
+  }
+  if (bionicFixationSelect) {
+    bionicFixationSelect.value = state.fixationPoint;
+  }
 }
 
 // Parse URL query parameters
@@ -153,11 +185,24 @@ function initApp() {
   const urlParams = parseQueryParams(window.location.search);
   
   state.theme = localStorage.getItem('the-hindu-reader-theme') || 'theme-broadside';
+  state.paperStyle = localStorage.getItem('the-hindu-reader-paper') || 'paper-ivory';
+  
+  // Load Bionic preferences: default to true on Gutenberg if no saved override exists
+  const storedBionic = localStorage.getItem('bionic-enabled');
+  if (storedBionic !== null) {
+    state.bionicReading = storedBionic === 'true';
+  } else {
+    state.bionicReading = (state.theme === 'theme-gutenberg');
+  }
+  
   applyTheme(state.theme);
   
   // Update state with URL parameters or fallback preferences
   state.date = urlParams.date || todayIST;
   state.city = urlParams.city || localStorage.getItem('the-hindu-reader-city') || 'th_delhi';
+  
+  state.fixationPoint = parseInt(localStorage.getItem('bionic-fixation'), 10) || 3;
+  syncBionicUI();
   
   // Sync state to DOM controls
   dateSelect.value = state.date;
@@ -181,7 +226,32 @@ function initApp() {
   document.querySelectorAll('.theme-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const selectedTheme = btn.getAttribute('data-theme');
-      updateState({ theme: selectedTheme });
+      if (selectedTheme) {
+        // When switching to Gutenberg, if no explicit override is stored, default bionic to true
+        if (selectedTheme === 'theme-gutenberg' && localStorage.getItem('bionic-enabled') === null) {
+          state.bionicReading = true;
+          syncBionicUI();
+        }
+        updateState({ theme: selectedTheme });
+      }
+    });
+  });
+
+  // Gutenberg Paper Selector Click Bindings
+  document.querySelectorAll('#paper-style-selector .ctrl-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const selectedPaper = btn.getAttribute('data-paper');
+      if (selectedPaper) {
+        state.paperStyle = selectedPaper;
+        localStorage.setItem('the-hindu-reader-paper', selectedPaper);
+        
+        // Update document classes whitelisting
+        const allPapers = ['paper-ivory', 'paper-white', 'paper-sepia'];
+        allPapers.forEach(p => document.documentElement.classList.remove(p));
+        document.documentElement.classList.add(selectedPaper);
+        
+        syncPaperUI();
+      }
     });
   });
 
@@ -189,6 +259,24 @@ function initApp() {
   readerCloseBtn.addEventListener('click', () => {
     closeArticleReader();
   });
+
+  // Bionic Reading Options Binding
+  if (bionicToggleBtn) {
+    bionicToggleBtn.addEventListener('click', () => {
+      state.bionicReading = !state.bionicReading;
+      localStorage.setItem('bionic-enabled', state.bionicReading);
+      syncBionicUI();
+      renderArticleContent();
+    });
+  }
+
+  if (bionicFixationSelect) {
+    bionicFixationSelect.addEventListener('change', () => {
+      state.fixationPoint = parseInt(bionicFixationSelect.value, 10) || 3;
+      localStorage.setItem('bionic-fixation', state.fixationPoint);
+      renderArticleContent();
+    });
+  }
 
   // AI picks generation trigger
   if (aiGenerateBtn) {
@@ -286,16 +374,53 @@ function syncUrlHistory() {
 
 // Apply the theme class to HTML root
 function applyTheme(themeClass) {
-  document.documentElement.className = themeClass;
+  const allThemes = ['theme-broadside', 'theme-folio', 'theme-dispatch', 'theme-gutenberg'];
+  allThemes.forEach(t => document.documentElement.classList.remove(t));
+  document.documentElement.classList.add(themeClass);
+  
+  const allPapers = ['paper-ivory', 'paper-white', 'paper-sepia'];
+  allPapers.forEach(p => document.documentElement.classList.remove(p));
+  
+  const subcontrols = document.getElementById('gutenberg-subcontrols');
+  if (themeClass === 'theme-gutenberg') {
+    document.documentElement.classList.add(state.paperStyle || 'paper-ivory');
+    if (subcontrols) {
+      subcontrols.style.display = 'flex';
+    }
+    syncPaperUI();
+  } else {
+    if (subcontrols) {
+      subcontrols.style.display = 'none';
+    }
+  }
+
   // Update button active state
   document.querySelectorAll('.theme-btn').forEach(btn => {
-    if (btn.getAttribute('data-theme') === themeClass) {
-      btn.classList.add('active');
-    } else {
-      btn.classList.remove('active');
+    const themeAttr = btn.getAttribute('data-theme');
+    if (themeAttr) {
+      if (themeAttr === themeClass) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
     }
   });
   localStorage.setItem('the-hindu-reader-theme', themeClass);
+}
+
+// Synchronize Gutenberg sub-paper active classes on buttons
+function syncPaperUI() {
+  const paperBtns = document.querySelectorAll('#gutenberg-subcontrols .ctrl-btn');
+  paperBtns.forEach(btn => {
+    const paperAttr = btn.getAttribute('data-paper');
+    if (paperAttr) {
+      if (paperAttr === state.paperStyle) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    }
+  });
 }
 
 // Display Warning Banner
@@ -365,7 +490,7 @@ async function fetchHeadlines() {
 
     const data = await response.json();
     state.issueId = data.issue_id;
-    state.rawPages = data.pages;
+    state.rawPages = data.pages || [];
     
     renderGrid();
     
@@ -791,6 +916,9 @@ async function openArticleReader(htmlRef) {
   state.isArticleLoading = true;
   state.activeArticleRef = htmlRef;
 
+  // Reset scroll coordinates of reader pane to zero (Gap 6 fix)
+  readerPane.scrollTop = 0;
+
   // Sync URL history state
   syncUrlHistory();
 
@@ -821,62 +949,10 @@ async function openArticleReader(htmlRef) {
     }
 
     const data = await response.json();
+    state.activeArticleData = data;
     
-    // Safely insert content using textContent to prevent XSS
-    readerCategory.textContent = state.city.replace('th_', '').toUpperCase();
-    readerHeadline.textContent = data.headline || "Untitled Article";
-    readerByline.textContent = data.author ? `By ${data.author}` : "";
-    readerDateline.textContent = data.dateline || "";
-
-    // Clear body and render paragraphs
-    readerBody.innerHTML = '';
-
-    // Find article metadata in local state to check for associated images
-    let articleMeta = null;
-    for (const page of state.rawPages) {
-      articleMeta = page.articles.find(art => art.html_ref === htmlRef);
-      if (articleMeta) break;
-    }
-
-    // Render associated images as cover illustrations
-    if (articleMeta && articleMeta.images && articleMeta.images.length > 0) {
-      articleMeta.images.forEach(imgRef => {
-        const img = document.createElement('img');
-        img.src = `https://epaper.thehindu.com/ccidist-ws/th/${state.city}/issues/${state.issueId}/OPS/${imgRef}`;
-        img.alt = "Article Illustration";
-        img.style.width = '100%';
-        img.style.maxHeight = '450px';
-        img.style.objectFit = 'contain';
-        img.style.margin = '0 0 24px 0';
-        img.style.borderRadius = '4px';
-        img.style.border = '1px solid var(--border-color)';
-        readerBody.appendChild(img);
-      });
-    }
-    
-    // Highlights if present
-    if (data.highlights && data.highlights.length > 0) {
-      data.highlights.forEach(quote => {
-        const div = document.createElement('div');
-        div.className = 'highlight-box';
-        div.textContent = quote;
-        readerBody.appendChild(div);
-      });
-    }
-
-    // Body Paragraphs
-    if (data.body && data.body.length > 0) {
-      data.body.forEach(paraText => {
-        const p = document.createElement('p');
-        p.textContent = paraText;
-        readerBody.appendChild(p);
-      });
-    } else {
-      const p = document.createElement('p');
-      p.style.fontStyle = 'italic';
-      p.textContent = "No body paragraphs found for this item.";
-      readerBody.appendChild(p);
-    }
+    // Call modular rendering function
+    renderArticleContent();
 
     readerLoader.style.display = 'none';
     readerContent.style.display = 'block';
@@ -895,8 +971,103 @@ async function openArticleReader(htmlRef) {
   }
 }
 
+function renderArticleContent() {
+  if (!state.activeArticleData) return;
+  const data = state.activeArticleData;
+  const htmlRef = state.activeArticleRef;
+
+  const textVideFn = typeof window.textVide === 'function'
+    ? window.textVide
+    : (window.textVide && typeof window.textVide.textVide === 'function' ? window.textVide.textVide : null);
+
+  // Safely insert content using textContent to prevent XSS
+  readerCategory.textContent = state.city.replace('th_', '').toUpperCase();
+  readerHeadline.textContent = data.headline || "Untitled Article";
+  readerByline.textContent = data.author ? `By ${data.author}` : "";
+  readerDateline.textContent = data.dateline || "";
+
+  // Save the scroll position of the reader pane
+  const savedScrollTop = readerPane.scrollTop;
+
+  // Clear body and render paragraphs
+  readerBody.innerHTML = '';
+
+  // Find article metadata in local state to check for associated images
+  let articleMeta = null;
+  for (const page of (state.rawPages || [])) {
+    articleMeta = page.articles.find(art => art.html_ref === htmlRef);
+    if (articleMeta) break;
+  }
+
+  // Render associated images as cover illustrations
+  if (articleMeta && articleMeta.images && articleMeta.images.length > 0) {
+    articleMeta.images.forEach(imgRef => {
+      const img = document.createElement('img');
+      img.src = `https://epaper.thehindu.com/ccidist-ws/th/${state.city}/issues/${state.issueId}/OPS/${imgRef}`;
+      img.alt = "Article Illustration";
+      img.style.width = '100%';
+      img.style.maxHeight = '450px';
+      img.style.objectFit = 'contain';
+      img.style.margin = '0 0 24px 0';
+      img.style.borderRadius = '4px';
+      img.style.border = '1px solid var(--border-color)';
+      readerBody.appendChild(img);
+    });
+  }
+  
+  // Highlights if present
+  if (data.highlights && data.highlights.length > 0) {
+    data.highlights.forEach(quote => {
+      const div = document.createElement('div');
+      div.className = 'highlight-box';
+      
+      if (state.bionicReading && textVideFn) {
+        const escaped = escapeHTML(quote);
+        div.innerHTML = textVideFn(escaped, {
+          ignoreHtmlTag: true,
+          ignoreHtmlEntity: true,
+          fixationPoint: state.fixationPoint
+        });
+      } else {
+        div.textContent = quote;
+      }
+      
+      readerBody.appendChild(div);
+    });
+  }
+
+  // Body Paragraphs
+  if (data.body && data.body.length > 0) {
+    data.body.forEach(paraText => {
+      const p = document.createElement('p');
+      
+      if (state.bionicReading && textVideFn) {
+        const escaped = escapeHTML(paraText);
+        p.innerHTML = textVideFn(escaped, {
+          ignoreHtmlTag: true,
+          ignoreHtmlEntity: true,
+          fixationPoint: state.fixationPoint
+        });
+      } else {
+        p.textContent = paraText;
+      }
+      
+      readerBody.appendChild(p);
+    });
+  } else {
+    const p = document.createElement('p');
+    p.style.fontStyle = 'italic';
+    p.textContent = "No body paragraphs found for this item.";
+    readerBody.appendChild(p);
+  }
+
+  // Restore the scroll position
+  readerPane.scrollTop = savedScrollTop;
+}
+
 function closeArticleReader(pushHistory = true) {
   state.activeArticleRef = null;
+  state.activeArticleData = null; // Clear cached content to free memory
   
   if (pushHistory) {
     syncUrlHistory();

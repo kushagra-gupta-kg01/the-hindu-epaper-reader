@@ -14,7 +14,11 @@
   <script>
     (function() {
       const savedTheme = localStorage.getItem('the-hindu-reader-theme') || 'theme-broadside';
-      document.documentElement.className = savedTheme;
+      document.documentElement.classList.add(savedTheme);
+      if (savedTheme === 'theme-gutenberg') {
+        const savedPaper = localStorage.getItem('the-hindu-reader-paper') || 'paper-ivory';
+        document.documentElement.classList.add(savedPaper);
+      }
     })();
   </script>
 
@@ -61,6 +65,7 @@
             <button class="theme-btn active" data-theme="theme-broadside" title="The Broadside (Cream)">Broadside</button>
             <button class="theme-btn" data-theme="theme-folio" title="The Folio (Kindle E-Ink)">Folio</button>
             <button class="theme-btn" data-theme="theme-dispatch" title="The Dispatch (Substack)">Dispatch</button>
+            <button class="theme-btn" data-theme="theme-gutenberg" title="Gutenberg (Premium Readability)">Gutenberg</button>
           </div>
         </div>
       </div>
@@ -162,6 +167,27 @@
     </div>
 
     <div id="reader-content" class="reader-content" style="display: none;">
+      <div class="reader-toolbar" id="reader-toolbar">
+        <button id="bionic-toggle-btn" class="toolbar-btn" aria-label="Toggle Bionic Reading">Bionic: Off</button>
+        <div id="gutenberg-subcontrols" class="fixation-control" style="display: none;">
+          <label>Paper:</label>
+          <div class="theme-switcher" id="paper-style-selector" style="border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; display: flex;">
+            <button class="theme-btn ctrl-btn active" data-paper="paper-ivory" style="font-size: 0.72rem; padding: 4px 8px; border: none; background: none;" title="Warm Ivory">Ivory</button>
+            <button class="theme-btn ctrl-btn" data-paper="paper-white" style="font-size: 0.72rem; padding: 4px 8px; border: none; border-left: 1px solid var(--border-color); background: none;" title="Modern High Contrast">Contrast</button>
+            <button class="theme-btn ctrl-btn" data-paper="paper-sepia" style="font-size: 0.72rem; padding: 4px 8px; border: none; border-left: 1px solid var(--border-color); background: none;" title="Warm Sepia">Sepia</button>
+          </div>
+        </div>
+        <div class="fixation-control" id="fixation-control" style="display: none;">
+          <label for="bionic-fixation-select">Fixation:</label>
+          <select id="bionic-fixation-select" class="ui-select-mini">
+            <option value="1">1 (Light)</option>
+            <option value="2">2</option>
+            <option value="3" selected>3</option>
+            <option value="4">4</option>
+            <option value="5">5 (Strong)</option>
+          </select>
+        </div>
+      </div>
       <article class="article-reader-container">
         <header class="reader-header">
           <div id="reader-category" class="reader-category">SECTION</div>
@@ -176,6 +202,7 @@
     </div>
   </div>
 
+  <script src="vendor/text-vide.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

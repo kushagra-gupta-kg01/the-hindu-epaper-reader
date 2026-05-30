@@ -59,10 +59,10 @@ def rank_headlines(headlines_data: dict, limit: int) -> list:
         "X-Title": "The Hindu ePaper Reader",
     }
     payload = {
-        "model": "z-ai/glm-4.5-air:free",
+        "model": "openrouter/owl-alpha",
         "models": [
-            "z-ai/glm-4.5-air:free",
             "openrouter/owl-alpha",
+            "z-ai/glm-4.5-air:free",
             "google/gemma-4-31b-it:free",
         ],
         "messages": [

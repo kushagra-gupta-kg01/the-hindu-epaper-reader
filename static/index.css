@@ -53,6 +53,52 @@ html.theme-dispatch {
   --header-double-border: 1px solid var(--border-color);
 }
 
+/* Theme 4: Gutenberg Flagship Readability Mode */
+html.theme-gutenberg {
+  --font-serif-heading: 'Playfair Display', Georgia, serif;
+  --font-serif-body: 'Merriweather', Georgia, serif;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+
+  --letter-spacing-banner: -0.4px;
+  --header-double-border: 1px solid var(--border-color);
+  
+  /* Fallbacks in case sub-class is loading */
+  --bg-color: #FDFBF7;
+  --text-color: #1E1C1A;
+  --border-color: #EBE6DC;
+  --accent-color: #8F2A2A;
+  --meta-color: #6B655C;
+  --hover-tint: #F5EFEB;
+}
+
+/* Gutenberg Paper Sub-Styles */
+html.theme-gutenberg.paper-ivory {
+  --bg-color: #FDFBF7;
+  --text-color: #1E1C1A;
+  --border-color: #EBE6DC;
+  --accent-color: #8F2A2A;
+  --meta-color: #6B655C;
+  --hover-tint: #F5EFEB;
+}
+
+html.theme-gutenberg.paper-white {
+  --bg-color: #FFFFFF;
+  --text-color: #000000;
+  --border-color: #E2E8F0;
+  --accent-color: #C53030;
+  --meta-color: #4A5568;
+  --hover-tint: #EDF2F7;
+}
+
+html.theme-gutenberg.paper-sepia {
+  --bg-color: #F4ECD8;
+  --text-color: #3A2E2B;
+  --border-color: #E4D5B7;
+  --accent-color: #A0522D;
+  --meta-color: #7A6C5D;
+  --hover-tint: #ECE0C5;
+}
+
 /* ==========================================================================
    BASE & RESET STYLES
    ========================================================================== */
@@ -932,3 +978,115 @@ html.theme-folio .ai-card:hover {
 .shimmer-bar-title { width: 90%; height: 32px; margin-top: 8px; }
 .shimmer-bar-desc { width: 75%; height: 20px; }
 .shimmer-bar-meta { width: 45%; height: 18px; margin-top: auto; }
+
+/* ==========================================================================
+   BIONIC READING OPTIONS TOOLBAR
+   ========================================================================== */
+.reader-toolbar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 16px;
+  margin-top: 10px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border-color);
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--meta-color);
+  transition: all 0.3s ease;
+}
+
+.toolbar-btn {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.toolbar-btn:hover {
+  border-color: var(--accent-color);
+  background-color: var(--hover-tint);
+}
+
+.toolbar-btn.active {
+  background-color: var(--accent-color);
+  color: #fff;
+  border-color: var(--accent-color);
+}
+
+.fixation-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: fadeIn 0.2s ease;
+}
+
+.fixation-control label {
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 1px;
+  font-weight: 700;
+}
+
+.ui-select-mini {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.ui-select-mini:hover {
+  border-color: var(--accent-color);
+  background-color: var(--hover-tint);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.reader-body b,
+.highlight-box b {
+  font-weight: 700;
+  color: var(--text-color);
+  opacity: 0.95;
+}
+
+/* Gutenberg Specific Scoping Rules */
+html.theme-gutenberg .reader-content {
+  max-width: 640px;
+}
+
+html.theme-gutenberg .reader-body {
+  font-family: var(--font-serif-body);
+  font-size: var(--font-size);
+  line-height: var(--line-height);
+}
+
+html.theme-gutenberg .ai-card {
+  background-color: var(--hover-tint);
+}
+
+/* Premium transitions for paper styles changes */
+.reader-pane, .reader-toolbar, .reader-close-btn, .ai-card, .article-card {
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+}
+

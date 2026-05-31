@@ -394,6 +394,15 @@
     assertEqual(toggleBtn.textContent, "Bionic: On", "Button label should update");
     assertEqual(localStorage.getItem('bionic-enabled'), 'true', "localStorage should sync");
     assertEqual(strengthCtrl.style.display, 'inline-block', "Fixation control panel should be visible");
+    assert(document.documentElement.classList.contains('bionic-active'), "HTML element should contain bionic-active class");
+
+    // Toggle again to verify removal
+    toggleBtn.dispatchEvent({ type: 'click' });
+    assertEqual(state.bionicReading, false, "state.bionicReading should toggle to false");
+    assertEqual(toggleBtn.textContent, "Bionic: Off", "Button label should update to Off");
+    assertEqual(localStorage.getItem('bionic-enabled'), 'false', "localStorage should sync to false");
+    assertEqual(strengthCtrl.style.display, 'none', "Fixation control panel should be hidden");
+    assert(!document.documentElement.classList.contains('bionic-active'), "HTML element should not contain bionic-active class");
   });
 
   // Test Case 3: Fixation Selection Change Handler

@@ -107,8 +107,10 @@ function syncBionicUI() {
     bionicToggleBtn.textContent = state.bionicReading ? "Bionic: On" : "Bionic: Off";
     if (state.bionicReading) {
       bionicToggleBtn.classList.add('active');
+      document.documentElement.classList.add('bionic-active');
     } else {
       bionicToggleBtn.classList.remove('active');
+      document.documentElement.classList.remove('bionic-active');
     }
   }
   if (fixationControl) {

@@ -62,6 +62,8 @@ html.theme-gutenberg {
   --font-size: 1.25rem;
   --line-height: 1.8;
 
+  --gutenberg-normal-text: #484440;
+
   --letter-spacing-banner: -0.4px;
   --header-double-border: 1px solid var(--border-color);
   
@@ -88,6 +90,7 @@ html.theme-gutenberg.paper-ivory {
   --accent-color: #8F2A2A;
   --meta-color: #6B655C;
   --hover-tint: #F5EFEB;
+  --gutenberg-normal-text: #484440;
 }
 
 html.theme-gutenberg.paper-white {
@@ -97,6 +100,7 @@ html.theme-gutenberg.paper-white {
   --accent-color: #C53030;
   --meta-color: #4A5568;
   --hover-tint: #EDF2F7;
+  --gutenberg-normal-text: #444444;
 }
 
 html.theme-gutenberg.paper-sepia {
@@ -106,6 +110,7 @@ html.theme-gutenberg.paper-sepia {
   --accent-color: #A0522D;
   --meta-color: #7A6C5D;
   --hover-tint: #ECE0C5;
+  --gutenberg-normal-text: #655651;
 }
 
 /* ==========================================================================
@@ -1122,6 +1127,23 @@ html.theme-gutenberg .reader-body {
   font-family: var(--font-serif-body);
   font-size: var(--font-size);
   line-height: var(--line-height);
+  font-weight: 400; /* Regular weight when bionic is disabled */
+  color: var(--text-color); /* Full contrast when bionic is disabled */
+}
+
+html.theme-gutenberg.bionic-active .reader-body {
+  font-weight: 300; /* Light weight for normal text in bionic mode */
+  color: var(--gutenberg-normal-text); /* Softer carbon grey for bionic normal text */
+}
+
+html.theme-gutenberg.bionic-active .reader-body b {
+  font-weight: 700; /* Bold weight for bionic anchors */
+  color: var(--text-color); /* Deepest contrast for bionic anchors */
+}
+
+html.theme-gutenberg.bionic-active .reader-body strong,
+html.theme-gutenberg.bionic-active .reader-body em {
+  font-weight: 600; /* Ensure emphasis tags look correct under weight 300 */
 }
 
 html.theme-gutenberg .reader-body p {
@@ -1133,6 +1155,11 @@ html.theme-gutenberg .highlight-box {
   line-height: 1.5;
   margin: 40px 0;
   padding-left: 24px;
+}
+
+html.theme-gutenberg .highlight-box b {
+  font-weight: 700;
+  color: var(--accent-color); /* Fix split-color pull-quote words by forcing accent color */
 }
 
 @media (max-width: 767px) {

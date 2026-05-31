@@ -18,6 +18,15 @@
       if (savedTheme === 'theme-gutenberg') {
         const savedPaper = localStorage.getItem('the-hindu-reader-paper') || 'paper-ivory';
         document.documentElement.classList.add(savedPaper);
+        const savedBionic = localStorage.getItem('bionic-enabled');
+        if (savedBionic === 'true' || savedBionic === null) {
+          document.documentElement.classList.add('bionic-active');
+        }
+      } else {
+        const savedBionic = localStorage.getItem('bionic-enabled');
+        if (savedBionic === 'true') {
+          document.documentElement.classList.add('bionic-active');
+        }
       }
     })();
   </script>

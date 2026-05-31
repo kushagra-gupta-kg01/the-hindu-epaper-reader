@@ -55,9 +55,12 @@ html.theme-dispatch {
 
 /* Theme 4: Gutenberg Flagship Readability Mode */
 html.theme-gutenberg {
-  --font-serif-heading: 'Playfair Display', Georgia, serif;
+  --font-serif-heading: 'Merriweather', Georgia, serif;
   --font-serif-body: 'Merriweather', Georgia, serif;
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+
+  --font-size: 1.25rem;
+  --line-height: 1.8;
 
   --letter-spacing-banner: -0.4px;
   --header-double-border: 1px solid var(--border-color);
@@ -69,6 +72,12 @@ html.theme-gutenberg {
   --accent-color: #8F2A2A;
   --meta-color: #6B655C;
   --hover-tint: #F5EFEB;
+}
+
+@media (max-width: 767px) {
+  html.theme-gutenberg {
+    --font-size: 1.125rem;
+  }
 }
 
 /* Gutenberg Paper Sub-Styles */
@@ -998,6 +1007,14 @@ html.theme-folio .ai-card:hover {
   transition: all 0.3s ease;
 }
 
+@media (max-width: 600px) {
+  .reader-toolbar {
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 10px 8px;
+  }
+}
+
 .toolbar-btn {
   background-color: var(--bg-color);
   color: var(--text-color);
@@ -1075,10 +1092,54 @@ html.theme-gutenberg .reader-content {
   max-width: 640px;
 }
 
+html.theme-gutenberg .reader-header {
+  padding-bottom: 32px;
+  margin-bottom: 40px;
+}
+
+html.theme-gutenberg .reader-category {
+  letter-spacing: 1px;
+  margin-bottom: 16px;
+}
+
+html.theme-gutenberg .reader-byline {
+  margin-bottom: 8px;
+}
+
+html.theme-gutenberg .reader-headline {
+  font-size: 2.6rem;
+  line-height: 1.25;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 767px) {
+  html.theme-gutenberg .reader-headline {
+    font-size: 2.1rem;
+  }
+}
+
 html.theme-gutenberg .reader-body {
   font-family: var(--font-serif-body);
   font-size: var(--font-size);
   line-height: var(--line-height);
+}
+
+html.theme-gutenberg .reader-body p {
+  margin-bottom: 2rem;
+}
+
+html.theme-gutenberg .highlight-box {
+  font-size: 1.45rem;
+  line-height: 1.5;
+  margin: 40px 0;
+  padding-left: 24px;
+}
+
+@media (max-width: 767px) {
+  html.theme-gutenberg .highlight-box {
+    font-size: 1.35rem;
+    margin: 32px 0;
+  }
 }
 
 html.theme-gutenberg .ai-card {

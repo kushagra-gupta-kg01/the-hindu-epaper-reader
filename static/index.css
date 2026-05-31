@@ -3,18 +3,19 @@
    ========================================================================== */
 
 /* Default Theme: Theme 1 - The Broadside (Classic Print Editorial) */
-:root, html.theme-broadside {
+:root,
+html.theme-broadside {
   --bg-color: #FAF7F2;
   --text-color: #1C1B1A;
   --border-color: #E6E1DA;
   --accent-color: #8C2525;
   --meta-color: #5C5852;
   --hover-tint: #F3ECE0;
-  
+
   --font-serif-heading: 'Playfair Display', Georgia, serif;
   --font-serif-body: 'Lora', Georgia, serif;
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  
+
   --letter-spacing-banner: -0.5px;
   --header-double-border: 4px double var(--border-color);
 }
@@ -27,11 +28,11 @@ html.theme-folio {
   --accent-color: #4A6B5D;
   --meta-color: #6E6D6A;
   --hover-tint: #F0EEEB;
-  
+
   --font-serif-heading: 'Merriweather', Georgia, serif;
   --font-serif-body: 'Merriweather', Georgia, serif;
   --font-sans: 'Outfit', system-ui, -apple-system, sans-serif;
-  
+
   --letter-spacing-banner: 0px;
   --header-double-border: 1px solid var(--border-color);
 }
@@ -44,11 +45,11 @@ html.theme-dispatch {
   --accent-color: #3855E0;
   --meta-color: #696865;
   --hover-tint: #F2F1EC;
-  
+
   --font-serif-heading: 'PT Serif', Georgia, serif;
   --font-serif-body: 'PT Serif', Georgia, serif;
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  
+
   --letter-spacing-banner: -0.2px;
   --header-double-border: 1px solid var(--border-color);
 }
@@ -60,13 +61,13 @@ html.theme-gutenberg {
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
 
   --font-size: 1.25rem;
-  --line-height: 1.8;
+  --line-height: 1.4;
 
   --gutenberg-normal-text: #484440;
 
   --letter-spacing-banner: -0.4px;
   --header-double-border: 1px solid var(--border-color);
-  
+
   /* Fallbacks in case sub-class is loading */
   --bg-color: #FDFBF7;
   --text-color: #1E1C1A;
@@ -224,7 +225,8 @@ a {
 }
 
 /* Custom UI Inputs */
-.ui-select, .ui-date-input {
+.ui-select,
+.ui-date-input {
   background-color: var(--bg-color);
   color: var(--text-color);
   border: 1px solid var(--border-color);
@@ -238,7 +240,8 @@ a {
   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
-.ui-select:hover, .ui-date-input:hover {
+.ui-select:hover,
+.ui-date-input:hover {
   border-color: var(--accent-color);
   background-color: var(--hover-tint);
 }
@@ -350,11 +353,13 @@ a {
   margin: 0 auto;
   overflow-x: auto;
   white-space: nowrap;
-  scrollbar-width: none; /* Hide scrollbar for Firefox */
+  scrollbar-width: none;
+  /* Hide scrollbar for Firefox */
 }
 
 .section-nav-container::-webkit-scrollbar {
-  display: none; /* Hide scrollbar for Chrome/Safari */
+  display: none;
+  /* Hide scrollbar for Chrome/Safari */
 }
 
 .section-nav-list {
@@ -413,7 +418,7 @@ a {
 .section-block {
   margin-bottom: 56px;
   /* Visual offset when jumping via sticky header links */
-  scroll-margin-top: 80px; 
+  scroll-margin-top: 80px;
 }
 
 .section-header {
@@ -509,7 +514,8 @@ a {
   top: 0;
   left: 0;
   width: 100vw;
-  height: 100dvh; /* Dynamic viewport height */
+  height: 100dvh;
+  /* Dynamic viewport height */
   background-color: var(--bg-color);
   z-index: 1000;
   overflow-y: auto;
@@ -547,7 +553,7 @@ a {
   cursor: pointer;
   z-index: 1050;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
 }
 
 .reader-close-btn:hover {
@@ -630,7 +636,8 @@ a {
    SPINNERS & LOADERS
    ========================================================================== */
 
-.headlines-loading, .reader-loading {
+.headlines-loading,
+.reader-loading {
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -652,7 +659,9 @@ a {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Empty State / Fallback notice box */
@@ -685,18 +694,18 @@ a {
   .brand-title {
     font-size: 2.4rem;
   }
-  
+
   .control-panel {
     gap: 16px;
   }
-  
+
   .article-card.lead {
     grid-column: span 12;
     border-right: none;
     padding-right: 0;
     border-bottom: 1px solid var(--border-color);
   }
-  
+
   .article-card {
     grid-column: span 6;
   }
@@ -706,51 +715,51 @@ a {
   .app-header {
     padding: 16px 12px 12px 12px;
   }
-  
+
   .brand-title {
     font-size: 2rem;
   }
-  
+
   .control-panel {
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
     padding-top: 12px;
   }
-  
+
   .control-group {
     justify-content: space-between;
   }
-  
+
   .theme-switcher {
     width: 100%;
   }
-  
+
   .theme-btn {
     flex: 1;
     text-align: center;
   }
-  
+
   .section-nav-link {
     padding: 12px 12px;
     font-size: 0.75rem;
   }
-  
+
   .article-card {
     grid-column: span 12;
   }
-  
+
   .reader-close-btn {
     top: 10px;
     left: 10px;
     padding: 6px 10px;
     font-size: 0.7rem;
   }
-  
+
   .reader-content {
     margin-top: 40px;
   }
-  
+
   .reader-headline {
     font-size: 1.8rem;
   }
@@ -766,14 +775,17 @@ a {
   background-color: var(--bg-color);
   transition: all 0.3s ease;
 }
+
 html.theme-broadside .ai-picks-section {
   border: 3px double var(--border-color);
   margin-bottom: 12px;
 }
+
 html.theme-folio .ai-picks-section {
   border: 1px solid var(--text-color);
   margin-bottom: 12px;
 }
+
 html.theme-dispatch .ai-picks-section {
   border: 1px solid var(--border-color);
   border-radius: 12px;
@@ -789,16 +801,19 @@ html.theme-dispatch .ai-picks-section {
   border-bottom: 1px solid var(--border-color);
   padding-bottom: 10px;
 }
+
 .ai-title {
   font-family: var(--font-serif-heading);
   font-size: 1.4rem;
   font-weight: 700;
   color: var(--text-color);
 }
+
 html.theme-broadside .ai-title {
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+
 .ai-status-badge {
   font-size: 0.75rem;
   font-weight: 600;
@@ -806,11 +821,13 @@ html.theme-broadside .ai-title {
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+
 .ai-header-controls {
   display: flex;
   align-items: center;
   gap: 12px;
 }
+
 .ai-limit-label {
   font-size: 0.7rem;
   font-weight: 700;
@@ -818,6 +835,7 @@ html.theme-broadside .ai-title {
   color: var(--meta-color);
   letter-spacing: 0.5px;
 }
+
 .ai-limit-group {
   display: inline-flex;
   border: 1px solid var(--border-color);
@@ -825,6 +843,7 @@ html.theme-broadside .ai-title {
   overflow: hidden;
   background-color: var(--bg-color);
 }
+
 .ai-limit-btn {
   background: none;
   border: none;
@@ -837,13 +856,16 @@ html.theme-broadside .ai-title {
   transition: all 0.2s ease;
   outline: none;
 }
+
 .ai-limit-btn:not(:last-child) {
   border-right: 1px solid var(--border-color);
 }
+
 .ai-limit-btn:hover {
   background-color: var(--hover-tint);
   color: var(--text-color);
 }
+
 .ai-limit-btn.active {
   background-color: var(--accent-color);
   color: #ffffff;
@@ -855,6 +877,7 @@ html.theme-broadside .ai-title {
   margin-bottom: 16px;
   font-family: var(--font-serif-body);
 }
+
 .ai-gen-btn {
   background-color: var(--accent-color);
   color: #fff;
@@ -870,9 +893,11 @@ html.theme-broadside .ai-title {
   gap: 6px;
   transition: opacity 0.2s, transform 0.1s;
 }
+
 .ai-gen-btn:hover {
   opacity: 0.9;
 }
+
 .ai-gen-btn:active {
   transform: scale(0.98);
 }
@@ -882,6 +907,7 @@ html.theme-broadside .ai-title {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 24px;
 }
+
 .ai-card {
   border: 1px solid var(--border-color);
   background-color: var(--bg-color);
@@ -893,10 +919,12 @@ html.theme-broadside .ai-title {
   cursor: pointer;
   transition: all 0.25s ease;
 }
+
 .ai-card:hover {
   border-color: var(--accent-color);
   transform: translateY(-2px);
 }
+
 html.theme-folio .ai-card:hover {
   background-color: var(--hover-tint);
   transform: none;
@@ -908,6 +936,7 @@ html.theme-folio .ai-card:hover {
   align-items: center;
   margin-bottom: 12px;
 }
+
 .card-badge {
   background-color: var(--accent-color);
   color: #fff;
@@ -920,6 +949,7 @@ html.theme-folio .ai-card:hover {
   align-items: center;
   justify-content: center;
 }
+
 .card-meta {
   font-size: 0.7rem;
   font-weight: 700;
@@ -927,6 +957,7 @@ html.theme-folio .ai-card:hover {
   color: var(--meta-color);
   letter-spacing: 0.5px;
 }
+
 .card-headline {
   font-family: var(--font-serif-heading);
   font-size: 1.25rem;
@@ -935,10 +966,12 @@ html.theme-folio .ai-card:hover {
   margin-bottom: 8px;
   color: var(--text-color);
 }
+
 .ai-card:hover .card-headline {
   color: var(--accent-color);
   text-decoration: underline;
 }
+
 .card-reason {
   font-family: var(--font-serif-body);
   font-style: italic;
@@ -948,12 +981,14 @@ html.theme-folio .ai-card:hover {
   border-left: 2px solid var(--border-color);
   padding-left: 8px;
 }
+
 .card-ratings {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin-top: auto;
 }
+
 .score-tag {
   font-size: 0.65rem;
   font-weight: 700;
@@ -969,6 +1004,7 @@ html.theme-folio .ai-card:hover {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 20px;
 }
+
 .ai-shimmer-card {
   border: 1px solid var(--border-color);
   padding: 20px;
@@ -978,20 +1014,45 @@ html.theme-folio .ai-card:hover {
   gap: 12px;
   background-color: var(--bg-color);
 }
+
 .ai-shimmer-bar {
   background: linear-gradient(90deg, var(--border-color) 25%, var(--hover-tint) 50%, var(--border-color) 75%);
   background-size: 200% 100%;
   animation: ai-shimmer-ani 1.5s infinite;
   border-radius: 4px;
 }
+
 @keyframes ai-shimmer-ani {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
 }
-.shimmer-bar-rank { width: 20%; height: 20px; }
-.shimmer-bar-title { width: 90%; height: 32px; margin-top: 8px; }
-.shimmer-bar-desc { width: 75%; height: 20px; }
-.shimmer-bar-meta { width: 45%; height: 18px; margin-top: auto; }
+
+.shimmer-bar-rank {
+  width: 20%;
+  height: 20px;
+}
+
+.shimmer-bar-title {
+  width: 90%;
+  height: 32px;
+  margin-top: 8px;
+}
+
+.shimmer-bar-desc {
+  width: 75%;
+  height: 20px;
+}
+
+.shimmer-bar-meta {
+  width: 45%;
+  height: 18px;
+  margin-top: auto;
+}
 
 /* ==========================================================================
    BIONIC READING OPTIONS TOOLBAR
@@ -1081,8 +1142,15 @@ html.theme-folio .ai-card:hover {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-3px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .reader-body b,
@@ -1127,23 +1195,30 @@ html.theme-gutenberg .reader-body {
   font-family: var(--font-serif-body);
   font-size: var(--font-size);
   line-height: var(--line-height);
-  font-weight: 400; /* Regular weight when bionic is disabled */
-  color: var(--text-color); /* Full contrast when bionic is disabled */
+  font-weight: 400;
+  /* Regular weight when bionic is disabled */
+  color: var(--text-color);
+  /* Full contrast when bionic is disabled */
 }
 
 html.theme-gutenberg.bionic-active .reader-body {
-  font-weight: 300; /* Light weight for normal text in bionic mode */
-  color: var(--gutenberg-normal-text); /* Softer carbon grey for bionic normal text */
+  font-weight: 300;
+  /* Light weight for normal text in bionic mode */
+  color: var(--gutenberg-normal-text);
+  /* Softer carbon grey for bionic normal text */
 }
 
 html.theme-gutenberg.bionic-active .reader-body b {
-  font-weight: 700; /* Bold weight for bionic anchors */
-  color: var(--text-color); /* Deepest contrast for bionic anchors */
+  font-weight: 700;
+  /* Bold weight for bionic anchors */
+  color: var(--text-color);
+  /* Deepest contrast for bionic anchors */
 }
 
 html.theme-gutenberg.bionic-active .reader-body strong,
 html.theme-gutenberg.bionic-active .reader-body em {
-  font-weight: 600; /* Ensure emphasis tags look correct under weight 300 */
+  font-weight: 600;
+  /* Ensure emphasis tags look correct under weight 300 */
 }
 
 html.theme-gutenberg .reader-body p {
@@ -1159,7 +1234,8 @@ html.theme-gutenberg .highlight-box {
 
 html.theme-gutenberg .highlight-box b {
   font-weight: 700;
-  color: var(--accent-color); /* Fix split-color pull-quote words by forcing accent color */
+  color: var(--accent-color);
+  /* Fix split-color pull-quote words by forcing accent color */
 }
 
 @media (max-width: 767px) {
@@ -1174,7 +1250,10 @@ html.theme-gutenberg .ai-card {
 }
 
 /* Premium transitions for paper styles changes */
-.reader-pane, .reader-toolbar, .reader-close-btn, .ai-card, .article-card {
+.reader-pane,
+.reader-toolbar,
+.reader-close-btn,
+.ai-card,
+.article-card {
   transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
 }
-

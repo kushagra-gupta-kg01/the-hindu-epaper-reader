@@ -83,7 +83,7 @@ def test_llm_success(sample_headlines):
         
         # Verify call parameters
         args, kwargs = mock_post.call_args
-        assert kwargs["timeout"] == 8
+        assert kwargs["timeout"] == 50
         assert "openrouter/owl-alpha" in kwargs["json"]["model"]
         assert kwargs["json"]["models"][0] == "openrouter/owl-alpha"
         assert kwargs["json"]["response_format"] == {"type": "json_object"}

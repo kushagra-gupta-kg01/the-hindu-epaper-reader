@@ -30,14 +30,15 @@ graph TD
 
 #### A. Headlines Retrieval (`/api/headlines?date=YYYY-MM-DD&city=th_city`)
 1. **Validation**: Date format is verified using regex (`^\d{4}-\d{2}-\d{2}$`). If invalid, API returns `422 Unprocessable Entity`.
-2. **Cache Check**: [src/cache.py](file:///Users/kushagragupta/Desktop/Projects/antigravity/the-hindu-newspaper/src/cache.py) checks if a parsed JSON file exists for the requested date and city.
-   - **TTL Rule**: Today's paper cache (in Indian Standard Time) expires after **24 hours** from file creation. Past papers **never expire**.
+2. **Cache Check**: [src/cache.py](file:///Users/kushagragupta/Desktop/Projects/antigravity/the-hindu-newspaper/src/cache.py) checks if a parsed JSON file exists.
+   - **Cloud Cache**: If `VERCEL_BLOB_STORE_URL` is set, check Vercel Blob storage. Otherwise, check the local disk cache (`data/` directory).
+   - **Never-Expiring Rule**: Newspaper parsed data is static and **never expires**.
 3. **Cache Hit**: Instantly returns the cached JSON content.
 4. **Cache Miss**:
    - [src/scraper.py](file:///Users/kushagragupta/Desktop/Projects/antigravity/the-hindu-newspaper/src/scraper.py) fetches the issue catalog, searches for the correct numerical `issue_id` matching the `city`.
    - Scraper fetches the `cciobjects` JSON payload containing page structure and article metadata.
    - [src/parser.py](file:///Users/kushagragupta/Desktop/Projects/antigravity/the-hindu-newspaper/src/parser.py) extracts page lists, filters out layout noise, resolves `.html` article content file references, and deduplicates image paths.
-   - [src/cache.py](file:///Users/kushagragupta/Desktop/Projects/antigravity/the-hindu-newspaper/src/cache.py) writes the clean parsed payload atomically and returns the JSON.
+   - [src/cache.py](file:///Users/kushagragupta/Desktop/Projects/antigravity/the-hindu-newspaper/src/cache.py) writes the clean parsed payload (either to Vercel Blob or local disk fallback) and returns the JSON.
 
 #### B. Article Details Retrieval (`/api/article?city=th_city&issue_id=num_id&ref=file_name.html`)
 1. Resolves the internal article ID from the `ref` parameters.
@@ -47,15 +48,16 @@ graph TD
 
 #### C. AI Editor's Picks Curation (`/api/top-headlines?date=YYYY-MM-DD&city=th_city&limit=num&generate=true/false`)
 1. **Validation**: Date format validation (`YYYY-MM-DD`) and limit check (positive integer).
-2. **Cache Check**: [src/cache.py](file:///Users/kushagragupta/Desktop/Projects/antigravity/the-hindu-newspaper/src/cache.py) checks if ranked cache data exists (`{city}_top.json`).
-   - **TTL Rule**: Today's top picks cache expires after **24 hours** from file creation. Past papers **never expire**.
+2. **Cache Check**: [src/cache.py](file:///Users/kushagragupta/Desktop/Projects/antigravity/the-hindu-newspaper/src/cache.py) checks if ranked cache data exists.
+   - **Cloud Cache**: If `VERCEL_BLOB_STORE_URL` is set, check Vercel Blob storage. Otherwise, check the local disk cache.
+   - **Never-Expiring Rule**: AI selection selections are static and **never expire**.
 3. **Cache Hit**: Returns cached top articles sliced to the requested `limit`.
 4. **Cache Miss**:
    - If `generate` is not `"true"`, returns `{"status": "not_generated"}`.
    - **Self-Healing Loader**: If the main headlines cache (`{city}.json`) is missing, the API calls `service.get_headlines` internally.
    - [src/llm.py](file:///Users/kushagragupta/Desktop/Projects/antigravity/the-hindu-newspaper/src/llm.py) compiles the list of headlines and triggers a ranking call to OpenRouter.
    - **Enrichment & ID Normalization**: The API parses the LLM JSON response and maps selections back to source articles using case-insensitive suffix-stripping ID normalization.
-   - Saves the entire enriched list to `{city}_top.json` cache and returns the top items sliced to `limit`.
+   - Saves the entire enriched list to the top picks cache (Vercel Blob or local disk fallback) and returns the top items sliced to `limit`.
 
 ---
 
@@ -102,15 +104,18 @@ Below is the directory tree layout showing key files and directories:
 ## 3. Implementation Context & Critical Gotchas
 
 > [!IMPORTANT]
-> **A. Serverless/Vercel Environment Cache Redirection**
-> Standard serverless environments on Vercel are read-only.
-> * `src/cache.py` resolves `CACHE_DIR` to the writable directory `/tmp/thehindureader-cache` if serverless indicators (`VERCEL`, `VERCEL_ENV`, `AWS_LAMBDA_FUNCTION_NAME`, `LAMBDA_TASK_ROOT`) are present.
-> * `CACHE_DIR` is evaluated at **import time**. When writing tests for serverless cache behavior, you **MUST** reload the cache module manually:
+> **A. Persistent Cloud Cache & Serverless Redirection**
+> To avoid container cache silos and ephemerality, the system uses **Vercel Blob Storage** as the primary persistent cache store.
+> * **Environment Configuration**: Set `VERCEL_BLOB_STORE_URL="https://xxxxxxxx.public.blob.vercel-storage.com"` and `BLOB_READ_WRITE_TOKEN` to enable cloud persistence.
+> * **Local Fallback**: If `VERCEL_BLOB_STORE_URL` is absent, the cache layer gracefully falls back to the local disk directory.
+> * **Serverless Local Redirection**: When falling back to local files in Vercel serverless environments (which are read-only), `src/cache.py` automatically redirects writes to the writable `/tmp/thehindureader-cache` directory.
+> * `CACHE_DIR` and environment variables are evaluated at import time. When writing tests for serverless cache behavior, you **MUST** reload the cache module manually:
 >   ```python
 >   import importlib
 >   import src.cache
 >   importlib.reload(src.cache)
 >   ```
+
 
 > [!WARNING]
 > **B. Mojibake and UTF-8 Encoding Overrides**

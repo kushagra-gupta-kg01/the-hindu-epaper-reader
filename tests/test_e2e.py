@@ -184,3 +184,66 @@ def test_e2e_validation_boundaries():
         cache.clear(date, city)
 
 
+@pytest.mark.e2e
+def test_e2e_top_headlines_limitless_caching():
+    import os
+    import time
+    from fastapi.testclient import TestClient
+    from api.index import app
+    from src import cache
+
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key or not api_key.strip():
+        pytest.skip("OPENROUTER_API_KEY not configured. Skipping live OpenRouter E2E test.")
+
+    client = TestClient(app)
+    date = "2026-05-28"
+    city = "th_delhi"
+
+    try:
+        # Pre-clean cache
+        cache.clear(date, city)
+
+        # 1. First fetch with NO limit parameter (generates the full pool of articles)
+        resp_full = client.get(f"/api/top-headlines?date={date}&city={city}&generate=true")
+        assert resp_full.status_code == 200
+        data_full = resp_full.json()
+        assert data_full["status"] == "ready"
+
+        full_len = len(data_full["top_articles"])
+        assert full_len > 0
+
+        # 2. Subsequent call with limit=10 (cache hit)
+        start = time.time()
+        resp_limit_10 = client.get(f"/api/top-headlines?date={date}&city={city}&generate=false&limit=10")
+        elapsed_10 = time.time() - start
+        assert resp_limit_10.status_code == 200
+        assert elapsed_10 < 3.0
+        data_10 = resp_limit_10.json()
+        assert data_10["status"] == "ready"
+        assert len(data_10["top_articles"]) == min(10, full_len)
+
+        # 3. Subsequent call with limit=20 (cache hit)
+        start = time.time()
+        resp_limit_20 = client.get(f"/api/top-headlines?date={date}&city={city}&generate=false&limit=20")
+        elapsed_20 = time.time() - start
+        assert resp_limit_20.status_code == 200
+        assert elapsed_20 < 3.0
+        data_20 = resp_limit_20.json()
+        assert data_20["status"] == "ready"
+        assert len(data_20["top_articles"]) == min(20, full_len)
+
+        # 4. Subsequent call with NO limit (cache hit, returns all)
+        start = time.time()
+        resp_limit_none = client.get(f"/api/top-headlines?date={date}&city={city}&generate=false")
+        elapsed_none = time.time() - start
+        assert resp_limit_none.status_code == 200
+        assert elapsed_none < 3.0
+        data_none = resp_limit_none.json()
+        assert data_none["status"] == "ready"
+        assert len(data_none["top_articles"]) == full_len
+
+    finally:
+        cache.clear(date, city)
+
+

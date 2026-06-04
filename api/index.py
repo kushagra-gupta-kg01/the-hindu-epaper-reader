@@ -1,7 +1,7 @@
 import re
 import os
 import requests
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from src import service
@@ -9,7 +9,15 @@ from src import scraper
 from src import parser
 from src import cache
 from src import llm
+from src.cache import get_ist_today_str
 
+def get_cache_control_headers(date: str) -> dict:
+    if date == get_ist_today_str():
+        return {"Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400"}
+    else:
+        return {"Cache-Control": "public, max-age=31536000, immutable"}
+
+ERROR_HEADERS = {"Cache-Control": "no-store, no-cache, must-revalidate"}
 
 app = FastAPI(title="The Hindu ePaper Extractor API")
 
@@ -34,6 +42,7 @@ def get_article_id_from_ref(ref: str) -> str:
 
 @app.get("/api/headlines")
 def get_headlines_endpoint(
+    response: Response,
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
     city: str = Query(..., description="City ID, e.g. th_delhi")
 ):
@@ -41,26 +50,32 @@ def get_headlines_endpoint(
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise HTTPException(
             status_code=422,
-            detail="Invalid date format. Must be YYYY-MM-DD"
+            detail="Invalid date format. Must be YYYY-MM-DD",
+            headers=ERROR_HEADERS
         )
         
     try:
         data = service.get_headlines(date, city)
+        cc_headers = get_cache_control_headers(date)
+        response.headers.update(cc_headers)
         return data
     except requests.RequestException as e:
         raise HTTPException(
             status_code=502,
-            detail=f"Unable to fetch newspaper data from server: {e}"
+            detail=f"Unable to fetch newspaper data from server: {e}",
+            headers=ERROR_HEADERS
         )
     except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail=str(e)
+            detail=str(e),
+            headers=ERROR_HEADERS
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Internal server error: {e}"
+            detail=f"Internal server error: {e}",
+            headers=ERROR_HEADERS
         )
 
 @app.get("/api/article")
@@ -97,6 +112,7 @@ def normalize_id(art_id: str) -> str:
 
 @app.get("/api/top-headlines")
 def get_top_headlines_endpoint(
+    response: Response,
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
     city: str = Query(..., description="City ID, e.g. th_delhi"),
     limit: int = Query(5, description="Number of top articles to return"),
@@ -106,39 +122,43 @@ def get_top_headlines_endpoint(
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise HTTPException(
             status_code=422,
-            detail="Invalid date format. Must be YYYY-MM-DD"
+            detail="Invalid date format. Must be YYYY-MM-DD",
+            headers=ERROR_HEADERS
         )
 
     # Validate limit
     if limit <= 0:
         raise HTTPException(
             status_code=422,
-            detail="limit must be a positive integer"
+            detail="limit must be a positive integer",
+            headers=ERROR_HEADERS
         )
 
     # Cache hit path
-    if cache.top_exists(date, city):
-        top_data = cache.read_top(date, city)
-        if top_data and "top_articles" in top_data:
+    top_data = cache.read_top(date, city)
+    if isinstance(top_data, dict) and top_data.get("status") == "ready":
+        if "top_articles" in top_data:
             top_data["top_articles"] = top_data["top_articles"][:limit]
+        cc_headers = get_cache_control_headers(date)
+        response.headers.update(cc_headers)
         return top_data
 
     # Cache miss path
     if generate.lower() != "true":
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         return {"status": "not_generated"}
 
     # Self-healing main headlines load
-    if not cache.exists(date, city):
+    headlines_data = cache.read(date, city)
+    if not headlines_data:
         try:
             headlines_data = service.get_headlines(date, city)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e), headers=ERROR_HEADERS)
         except requests.RequestException as e:
-            raise HTTPException(status_code=502, detail=f"Unable to fetch newspaper data from server: {e}")
+            raise HTTPException(status_code=502, detail=f"Unable to fetch newspaper data from server: {e}", headers=ERROR_HEADERS)
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
-    else:
-        headlines_data = cache.read(date, city)
+            raise HTTPException(status_code=500, detail=f"Internal server error: {e}", headers=ERROR_HEADERS)
 
     # Count total articles
     all_articles = []
@@ -149,7 +169,8 @@ def get_top_headlines_endpoint(
     if not all_articles:
         raise HTTPException(
             status_code=400,
-            detail="No articles available in this edition"
+            detail="No articles available in this edition",
+            headers=ERROR_HEADERS
         )
 
     # Rank headlines using LLM
@@ -159,13 +180,13 @@ def get_top_headlines_endpoint(
     except ValueError as e:
         err_msg = str(e)
         if "OpenRouter API Key is not configured" in err_msg:
-            raise HTTPException(status_code=500, detail=err_msg)
+            raise HTTPException(status_code=500, detail=err_msg, headers=ERROR_HEADERS)
         else:
-            raise HTTPException(status_code=502, detail=f"AI Generation failed: {err_msg}")
+            raise HTTPException(status_code=502, detail=f"AI Generation failed: {err_msg}", headers=ERROR_HEADERS)
     except requests.RequestException as e:
-        raise HTTPException(status_code=502, detail=f"AI Generation failed: {e}")
+        raise HTTPException(status_code=502, detail=f"AI Generation failed: {e}", headers=ERROR_HEADERS)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI Generation failed: {e}")
+        raise HTTPException(status_code=502, detail=f"AI Generation failed: {e}", headers=ERROR_HEADERS)
 
     # Build optimized O(N) lookup index
     lookup = {}
@@ -177,6 +198,8 @@ def get_top_headlines_endpoint(
     # Enrich selected articles
     enriched_articles = []
     for item in raw_top_articles:
+        if not isinstance(item, dict):
+            continue
         raw_id = item.get("id")
         if not raw_id:
             continue
@@ -204,7 +227,8 @@ def get_top_headlines_endpoint(
     if not enriched_articles:
         raise HTTPException(
             status_code=502,
-            detail="AI returned an empty selection list"
+            detail="AI returned an empty selection list",
+            headers=ERROR_HEADERS
         )
 
     # Save unsliced to cache
@@ -213,6 +237,9 @@ def get_top_headlines_endpoint(
         "top_articles": enriched_articles
     }
     cache.write_top(date, city, top_cache_data)
+
+    cc_headers = get_cache_control_headers(date)
+    response.headers.update(cc_headers)
 
     return {
         "status": "ready",

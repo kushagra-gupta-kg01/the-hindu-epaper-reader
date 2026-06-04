@@ -232,8 +232,7 @@ def test_top_headlines_cache_hit():
             {"id": "art_3", "headline": "Headline 3", "ratings": {"impact": 7}, "reason": "Reason 3"}
         ]
     }
-    with patch("src.cache.top_exists", return_value=True) as mock_exists, \
-         patch("src.cache.read_top", return_value=mock_top_data) as mock_read:
+    with patch("src.cache.read_top", return_value=mock_top_data) as mock_read:
          
         # When we fetch with limit=2
         response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&limit=2")
@@ -245,25 +244,28 @@ def test_top_headlines_cache_hit():
         assert len(data["top_articles"]) == 2
         assert data["top_articles"][0]["id"] == "art_1"
         assert data["top_articles"][1]["id"] == "art_2"
+        mock_read.assert_called_once_with("2026-05-28", "th_delhi")
 
 
 def test_top_headlines_generate_false():
-    with patch("src.cache.top_exists", return_value=False):
+    with patch("src.cache.read_top", return_value={}) as mock_read:
         response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi")
         assert response.status_code == 200
         assert response.json() == {"status": "not_generated"}
+        mock_read.assert_called_once_with("2026-05-28", "th_delhi")
 
 
 def test_top_headlines_generate_zero_articles():
     # GIVEN main headlines has zero articles
     mock_headlines = {"pages": [{"articles": []}, {"articles": []}]}
-    with patch("src.cache.top_exists", return_value=False), \
-         patch("src.cache.exists", return_value=True), \
-         patch("src.cache.read", return_value=mock_headlines):
+    with patch("src.cache.read_top", return_value={}) as mock_read_top, \
+         patch("src.cache.read", return_value=mock_headlines) as mock_read:
          
         response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
         assert response.status_code == 400
         assert "No articles available in this edition" in response.json()["detail"]
+        mock_read_top.assert_called_once_with("2026-05-28", "th_delhi")
+        mock_read.assert_called_once_with("2026-05-28", "th_delhi")
 
 
 def test_top_headlines_generate_success():
@@ -285,9 +287,8 @@ def test_top_headlines_generate_success():
         {"id": "go1g1nqtf", "ratings": [9, 10, 8, 7], "reason": "SC election ruling."}
     ]
 
-    with patch("src.cache.top_exists", return_value=False), \
-         patch("src.cache.exists", return_value=True), \
-         patch("src.cache.read", return_value=mock_headlines), \
+    with patch("src.cache.read_top", return_value={}) as mock_read_top, \
+         patch("src.cache.read", return_value=mock_headlines) as mock_read, \
          patch("src.llm.rank_headlines", return_value=mock_llm_result) as mock_rank, \
          patch("src.cache.write_top", return_value=True) as mock_write:
          
@@ -319,8 +320,7 @@ def test_top_headlines_generate_success():
 
 def test_top_headlines_generate_missing_api_key_500():
     mock_headlines = {"pages": [{"articles": [{"id": "a1", "headline": "Headline"}]}]}
-    with patch("src.cache.top_exists", return_value=False), \
-         patch("src.cache.exists", return_value=True), \
+    with patch("src.cache.read_top", return_value={}), \
          patch("src.cache.read", return_value=mock_headlines), \
          patch("src.llm.rank_headlines", side_effect=ValueError("OpenRouter API Key is not configured on the server.")):
          
@@ -331,8 +331,7 @@ def test_top_headlines_generate_missing_api_key_500():
 
 def test_top_headlines_generate_llm_error_502():
     mock_headlines = {"pages": [{"articles": [{"id": "a1", "headline": "Headline"}]}]}
-    with patch("src.cache.top_exists", return_value=False), \
-         patch("src.cache.exists", return_value=True), \
+    with patch("src.cache.read_top", return_value={}), \
          patch("src.cache.read", return_value=mock_headlines), \
          patch("src.llm.rank_headlines", side_effect=ValueError("OpenRouter API Error: Rate limit")):
          
@@ -344,8 +343,7 @@ def test_top_headlines_generate_llm_error_502():
 def test_top_headlines_generate_empty_selection_502():
     mock_headlines = {"pages": [{"articles": [{"id": "a1", "headline": "Headline"}]}]}
     # GIVEN the LLM returned empty list, or entirely hallucinated list (empty after validation)
-    with patch("src.cache.top_exists", return_value=False), \
-         patch("src.cache.exists", return_value=True), \
+    with patch("src.cache.read_top", return_value={}), \
          patch("src.cache.read", return_value=mock_headlines), \
          patch("src.llm.rank_headlines", return_value=[]):
          
@@ -355,15 +353,15 @@ def test_top_headlines_generate_empty_selection_502():
 
 
 def test_top_headlines_self_healing_success():
-    # GIVEN main headlines cache is missing (exists=False)
+    # GIVEN main headlines cache is missing
     mock_headlines = {
         "pages": [{"articles": [{"id": "art_1", "headline": "Headline"}]}],
         "issue_id": "186654",
         "date": "2026-05-28",
         "city": "th_delhi"
     }
-    with patch("src.cache.top_exists", return_value=False), \
-         patch("src.cache.exists", return_value=False), \
+    with patch("src.cache.read_top", return_value={}), \
+         patch("src.cache.read", return_value={}), \
          patch("src.service.get_headlines", return_value=mock_headlines) as mock_get_h, \
          patch("src.llm.rank_headlines", return_value=[{"id": "art_1", "ratings": [1,2,3,4], "reason": "Reason"}]), \
          patch("src.cache.write_top", return_value=True):
@@ -374,8 +372,8 @@ def test_top_headlines_self_healing_success():
 
 
 def test_top_headlines_self_healing_value_error_400():
-    with patch("src.cache.top_exists", return_value=False), \
-         patch("src.cache.exists", return_value=False), \
+    with patch("src.cache.read_top", return_value={}), \
+         patch("src.cache.read", return_value={}), \
          patch("src.service.get_headlines", side_effect=ValueError("Invalid city ID")):
          
         response = client.get("/api/top-headlines?date=2026-05-28&city=invalid_city&generate=true")
@@ -384,8 +382,8 @@ def test_top_headlines_self_healing_value_error_400():
 
 
 def test_top_headlines_self_healing_outage_502():
-    with patch("src.cache.top_exists", return_value=False), \
-         patch("src.cache.exists", return_value=False), \
+    with patch("src.cache.read_top", return_value={}), \
+         patch("src.cache.read", return_value={}), \
          patch("src.service.get_headlines", side_effect=requests.RequestException("Connection refused")):
          
         response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
@@ -400,8 +398,8 @@ def test_normalize_id_empty():
 
 
 def test_top_headlines_self_healing_internal_error_500():
-    with patch("src.cache.top_exists", return_value=False), \
-         patch("src.cache.exists", return_value=False), \
+    with patch("src.cache.read_top", return_value={}), \
+         patch("src.cache.read", return_value={}), \
          patch("src.service.get_headlines", side_effect=RuntimeError("DB error")):
          
         response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
@@ -411,8 +409,7 @@ def test_top_headlines_self_healing_internal_error_500():
 
 def test_top_headlines_llm_request_exception_502():
     mock_headlines = {"pages": [{"articles": [{"id": "a1", "headline": "Headline"}]}]}
-    with patch("src.cache.top_exists", return_value=False), \
-         patch("src.cache.exists", return_value=True), \
+    with patch("src.cache.read_top", return_value={}), \
          patch("src.cache.read", return_value=mock_headlines), \
          patch("src.llm.rank_headlines", side_effect=requests.RequestException("Timeout error")):
          
@@ -423,8 +420,7 @@ def test_top_headlines_llm_request_exception_502():
 
 def test_top_headlines_llm_generic_exception_502():
     mock_headlines = {"pages": [{"articles": [{"id": "a1", "headline": "Headline"}]}]}
-    with patch("src.cache.top_exists", return_value=False), \
-         patch("src.cache.exists", return_value=True), \
+    with patch("src.cache.read_top", return_value={}), \
          patch("src.cache.read", return_value=mock_headlines), \
          patch("src.llm.rank_headlines", side_effect=RuntimeError("Unexpected error")):
          
@@ -446,8 +442,7 @@ def test_top_headlines_llm_missing_id_skipped():
         {"id": None, "ratings": [1, 2, 3, 4], "reason": "No ID"},
         {"id": "go1g1nqtf", "ratings": [9, 10, 8, 7], "reason": "Valid"}
     ]
-    with patch("src.cache.top_exists", return_value=False), \
-         patch("src.cache.exists", return_value=True), \
+    with patch("src.cache.read_top", return_value={}), \
          patch("src.cache.read", return_value=mock_headlines), \
          patch("src.llm.rank_headlines", return_value=mock_llm_result), \
          patch("src.cache.write_top", return_value=True):
@@ -471,8 +466,7 @@ def test_top_headlines_llm_invalid_ratings_fallback():
     mock_llm_result = [
         {"id": "go1g1nqtf", "ratings": None, "reason": "No ratings"},
     ]
-    with patch("src.cache.top_exists", return_value=False), \
-         patch("src.cache.exists", return_value=True), \
+    with patch("src.cache.read_top", return_value={}), \
          patch("src.cache.read", return_value=mock_headlines), \
          patch("src.llm.rank_headlines", return_value=mock_llm_result), \
          patch("src.cache.write_top", return_value=True):
@@ -487,6 +481,77 @@ def test_top_headlines_llm_invalid_ratings_fallback():
             "interest": 0,
             "depth": 0
         }
+
+
+def test_headlines_cache_control_headers():
+    from src.cache import get_ist_today_str
+    today_str = get_ist_today_str()
+    past_str = "2020-01-01"
+    
+    with patch("src.service.get_headlines", return_value={"pages": []}):
+        # 1. Test today's date (hourly cache control)
+        resp_today = client.get(f"/api/headlines?date={today_str}&city=th_delhi")
+        assert resp_today.status_code == 200
+        assert resp_today.headers["Cache-Control"] == "public, s-maxage=3600, stale-while-revalidate=86400"
+        
+        # 2. Test past date (immutable cache control)
+        resp_past = client.get(f"/api/headlines?date={past_str}&city=th_delhi")
+        assert resp_past.status_code == 200
+        assert resp_past.headers["Cache-Control"] == "public, max-age=31536000, immutable"
+
+
+def test_top_headlines_llm_malformed_item_skipped():
+    mock_headlines = {
+        "pages": [
+            {
+                "page_num": 1,
+                "articles": [{"id": "GO1G1NQTF.1", "headline": "Headline"}]
+            }
+        ]
+    }
+    # LLM returns a malformed non-dict string element along with a valid dict element
+    mock_llm_result = [
+        "malformed_string_item",
+        {"id": "go1g1nqtf", "ratings": [9, 10, 8, 7], "reason": "Valid"}
+    ]
+    with patch("src.cache.read_top", return_value={}), \
+         patch("src.cache.read", return_value=mock_headlines), \
+         patch("src.llm.rank_headlines", return_value=mock_llm_result), \
+         patch("src.cache.write_top", return_value=True):
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["top_articles"]) == 1
+        assert data["top_articles"][0]["id"] == "GO1G1NQTF.1"
+
+
+def test_top_headlines_write_failure_non_fatal():
+    mock_headlines = {
+        "pages": [
+            {
+                "page_num": 1,
+                "articles": [{"id": "GO1G1NQTF.1", "headline": "Headline"}]
+            }
+        ]
+    }
+    mock_llm_result = [
+        {"id": "go1g1nqtf", "ratings": [9, 10, 8, 7], "reason": "Valid"}
+    ]
+    with patch("src.cache.read_top", return_value={}), \
+         patch("src.cache.read", return_value=mock_headlines), \
+         patch("src.llm.rank_headlines", return_value=mock_llm_result), \
+         patch("src.cache.write_top", return_value=False) as mock_write:
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ready"
+        assert len(data["top_articles"]) == 1
+        assert data["top_articles"][0]["id"] == "GO1G1NQTF.1"
+        mock_write.assert_called_once()
+
+
 
 
 

@@ -1,8 +1,11 @@
 import os
 import time
 import datetime
+import json
+import requests
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+import src.cache
 from src.cache import exists, read, write, clear, get_filepath, get_top_filepath, top_exists, read_top, write_top, clear_top
 
 # Helper to get current date in IST (UTC+5:30)
@@ -58,7 +61,7 @@ def test_cache_ttl_past_date():
     clear(past_date, city)
 
 def test_cache_ttl_today_date():
-    # Today's date (in IST) should expire if the file is older than 24 hours (1 day)
+    # Today's date (in IST) should NOT expire even if the file is older than 24 hours (1 day)
     today_str = get_ist_today_str()
     city = "th_test_city"
     data = {"today": "data"}
@@ -74,10 +77,11 @@ def test_cache_ttl_today_date():
     twenty_five_hours_ago = time.time() - (25 * 3600)
     os.utime(filepath, (twenty_five_hours_ago, twenty_five_hours_ago))
     
-    # Should report it does not exist (expired)
-    assert not exists(today_str, city)
+    # Should still report it exists (never expires)
+    assert exists(today_str, city)
     
     clear(today_str, city)
+
 
 def test_cache_write_failure_is_non_fatal():
     with patch("src.cache.os.makedirs", side_effect=OSError("read-only file system")):
@@ -191,26 +195,25 @@ def test_top_cache_ttl_and_dependency():
     write_top(today_str, city, top_data)
     assert top_exists(today_str, city)
     
-    # 1. Test dependency on main cache freshness
-    # Set main file time to 25 hours ago
+    # 1. Test that they do NOT expire when they are 25 hours old
     main_path = get_filepath(today_str, city)
+    top_path = get_top_filepath(today_str, city)
     twenty_five_hours_ago = time.time() - (25 * 3600)
     os.utime(main_path, (twenty_five_hours_ago, twenty_five_hours_ago))
+    os.utime(top_path, (twenty_five_hours_ago, twenty_five_hours_ago))
     
-    assert not exists(today_str, city)
-    assert not top_exists(today_str, city)  # Top cache reports false because main cache expired
-    
-    # Restore main cache freshness
-    write(today_str, city, main_data)
+    assert exists(today_str, city)
     assert top_exists(today_str, city)
     
-    # 2. Test top cache file freshness itself
-    top_path = get_top_filepath(today_str, city)
-    os.utime(top_path, (twenty_five_hours_ago, twenty_five_hours_ago))
-    assert not top_exists(today_str, city)  # Top cache itself expired
+    # 2. Test dependency on main cache existence
+    # Delete main cache file only
+    os.remove(main_path)
+    assert not exists(today_str, city)
+    assert not top_exists(today_str, city)  # Top cache should return False because main cache is missing
     
     # Cleanup
     clear(today_str, city)
+
 
 
 def test_top_cache_clear_cohesion():
@@ -274,5 +277,304 @@ def test_top_cache_write_remove_exception_is_silenced():
          patch("os.path.exists", return_value=True), \
          patch("os.remove", side_effect=OSError("Remove error")):
         assert write_top("2026-05-27", "th_delhi", {"data": 1}) is False
+
+
+def test_blob_cache_exists_hit():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch.object(src.cache.session, "head") as mock_head:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_head.return_value = mock_response
+        assert exists("2026-05-28", "th_delhi") is True
+        mock_head.assert_called_once_with("https://test.public.blob.vercel-storage.com/headlines/2026-05-28/th_delhi.json", timeout=4.0)
+
+
+def test_blob_cache_exists_miss():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch.object(src.cache.session, "head") as mock_head:
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_head.return_value = mock_response
+        assert exists("2026-05-28", "th_delhi") is False
+
+
+def test_blob_cache_exists_network_error():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch.object(src.cache.session, "head", side_effect=requests.RequestException("Timeout")):
+        assert exists("2026-05-28", "th_delhi") is False
+
+
+def test_blob_cache_read_success():
+    mock_data = {"key": "val"}
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch.object(src.cache.session, "get") as mock_get:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = mock_data
+        mock_get.return_value = mock_response
+        assert read("2026-05-28", "th_delhi") == mock_data
+        mock_get.assert_called_once_with("https://test.public.blob.vercel-storage.com/headlines/2026-05-28/th_delhi.json", timeout=4.0)
+
+
+def test_blob_cache_read_failure_or_network_error():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch.object(src.cache.session, "get", side_effect=requests.RequestException("Connection refused")):
+        assert read("2026-05-28", "th_delhi") == {}
+
+
+def test_blob_cache_write_success():
+    mock_data = {"layout": "data"}
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.BLOB_READ_WRITE_TOKEN", "test_token_123"), \
+         patch.object(src.cache.session, "put") as mock_put:
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_put.return_value = mock_response
+        assert write("2026-05-28", "th_delhi", mock_data) is True
+        mock_put.assert_called_once_with(
+            "https://blob.vercel-storage.com/headlines/2026-05-28/th_delhi.json",
+            headers={
+                "Authorization": "Bearer test_token_123",
+                "x-api-version": "1",
+                "x-add-random-suffix": "0",
+                "Content-Type": "application/json"
+            },
+            data=json.dumps(mock_data, indent=2),
+            timeout=4.0
+        )
+
+
+def test_blob_cache_write_token_missing():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.BLOB_READ_WRITE_TOKEN", None), \
+         patch.object(src.cache.session, "put") as mock_put:
+        assert write("2026-05-28", "th_delhi", {"data": 1}) is False
+        mock_put.assert_not_called()
+
+
+def test_blob_cache_write_network_failure():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.BLOB_READ_WRITE_TOKEN", "token"), \
+         patch.object(src.cache.session, "put", side_effect=requests.RequestException("Upload failed")):
+        assert write("2026-05-28", "th_delhi", {"data": 1}) is False
+
+
+def test_blob_cache_clear_success():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.BLOB_READ_WRITE_TOKEN", "token"), \
+         patch.object(src.cache.session, "delete") as mock_delete:
+        clear("2026-05-28", "th_delhi")
+        assert mock_delete.call_count == 2
+        mock_delete.assert_any_call(
+            "https://blob.vercel-storage.com/headlines/2026-05-28/th_delhi.json",
+            headers={"Authorization": "Bearer token", "x-api-version": "1"},
+            timeout=4.0
+        )
+        mock_delete.assert_any_call(
+            "https://blob.vercel-storage.com/top-headlines/2026-05-28/th_delhi_top.json",
+            headers={"Authorization": "Bearer token", "x-api-version": "1"},
+            timeout=4.0
+        )
+
+
+def test_blob_top_exists_hit():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.exists", return_value=True), \
+         patch.object(src.cache.session, "head") as mock_head, \
+         patch("src.cache.read_top", return_value={"status": "ready"}):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_head.return_value = mock_response
+        assert top_exists("2026-05-28", "th_delhi") is True
+
+
+def test_blob_top_exists_miss_main_missing():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.exists", return_value=False):
+        assert top_exists("2026-05-28", "th_delhi") is False
+
+
+def test_blob_top_exists_miss_top_file_missing():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.exists", return_value=True), \
+         patch.object(src.cache.session, "head") as mock_head:
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_head.return_value = mock_response
+        assert top_exists("2026-05-28", "th_delhi") is False
+
+
+def test_blob_top_exists_not_ready():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.exists", return_value=True), \
+         patch.object(src.cache.session, "head") as mock_head, \
+         patch("src.cache.read_top", return_value={"status": "failed"}):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_head.return_value = mock_response
+        assert top_exists("2026-05-28", "th_delhi") is False
+
+
+def test_blob_read_top_success():
+    mock_data = {"status": "ready", "top_articles": [{"id": "1"}]}
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch.object(src.cache.session, "get") as mock_get:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = mock_data
+        mock_get.return_value = mock_response
+        assert read_top("2026-05-28", "th_delhi") == mock_data
+        mock_get.assert_called_once_with("https://test.public.blob.vercel-storage.com/top-headlines/2026-05-28/th_delhi_top.json", timeout=4.0)
+
+
+def test_blob_read_top_failure_network_error():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch.object(src.cache.session, "get", side_effect=requests.RequestException("Timeout")):
+        assert read_top("2026-05-28", "th_delhi") == {}
+
+
+def test_blob_write_top_success():
+    mock_data = {"status": "ready"}
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.BLOB_READ_WRITE_TOKEN", "token"), \
+         patch.object(src.cache.session, "put") as mock_put:
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_put.return_value = mock_response
+        assert write_top("2026-05-28", "th_delhi", mock_data) is True
+        mock_put.assert_called_once_with(
+            "https://blob.vercel-storage.com/top-headlines/2026-05-28/th_delhi_top.json",
+            headers={
+                "Authorization": "Bearer token",
+                "x-api-version": "1",
+                "x-add-random-suffix": "0",
+                "Content-Type": "application/json"
+            },
+            data=json.dumps(mock_data, indent=2),
+            timeout=4.0
+        )
+
+
+def test_blob_write_top_token_missing():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.BLOB_READ_WRITE_TOKEN", None), \
+         patch.object(src.cache.session, "put") as mock_put:
+        assert write_top("2026-05-28", "th_delhi", {"data": 1}) is False
+        mock_put.assert_not_called()
+
+
+def test_blob_write_top_network_failure():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.BLOB_READ_WRITE_TOKEN", "token"), \
+         patch.object(src.cache.session, "put", side_effect=requests.RequestException("Upload failed")):
+        assert write_top("2026-05-28", "th_delhi", {"data": 1}) is False
+
+
+def test_blob_clear_top_success():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.BLOB_READ_WRITE_TOKEN", "token"), \
+         patch.object(src.cache.session, "delete") as mock_delete:
+        clear_top("2026-05-28", "th_delhi")
+        mock_delete.assert_called_once_with(
+            "https://blob.vercel-storage.com/top-headlines/2026-05-28/th_delhi_top.json",
+            headers={"Authorization": "Bearer token", "x-api-version": "1"},
+            timeout=4.0
+        )
+
+
+def test_blob_store_url_rstrip():
+    import importlib
+    with patch.dict(os.environ, {"VERCEL_BLOB_STORE_URL": "https://test.public.blob.vercel-storage.com/"}):
+        importlib.reload(src.cache)
+        assert src.cache.BLOB_STORE_URL == "https://test.public.blob.vercel-storage.com"
+    # Restore clean state
+    importlib.reload(src.cache)
+
+
+def test_get_ist_today_str():
+    from src.cache import get_ist_today_str
+    today_str = get_ist_today_str()
+    import re
+    assert re.match(r"^\d{4}-\d{2}-\d{2}$", today_str)
+
+
+def test_blob_cache_read_status_not_200():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch.object(src.cache.session, "get") as mock_get:
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_get.return_value = mock_response
+        assert read("2026-05-28", "th_delhi") == {}
+
+
+def test_blob_cache_clear_token_missing():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.BLOB_READ_WRITE_TOKEN", None), \
+         patch.object(src.cache.session, "delete") as mock_delete:
+        clear("2026-05-28", "th_delhi")
+        mock_delete.assert_not_called()
+
+
+def test_blob_cache_clear_network_error():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.BLOB_READ_WRITE_TOKEN", "token"), \
+         patch.object(src.cache.session, "delete", side_effect=requests.RequestException("Timeout")):
+        # Should not raise exception
+        clear("2026-05-28", "th_delhi")
+
+
+def test_blob_top_exists_network_error():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.exists", return_value=True), \
+         patch.object(src.cache.session, "head", side_effect=requests.RequestException("Timeout")):
+        assert top_exists("2026-05-28", "th_delhi") is False
+
+
+def test_blob_read_top_status_not_200():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch.object(src.cache.session, "get") as mock_get:
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_get.return_value = mock_response
+        assert read_top("2026-05-28", "th_delhi") == {}
+
+
+def test_blob_clear_top_token_missing():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.BLOB_READ_WRITE_TOKEN", None), \
+         patch.object(src.cache.session, "delete") as mock_delete:
+        clear_top("2026-05-28", "th_delhi")
+        mock_delete.assert_not_called()
+
+
+def test_blob_clear_top_network_error():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.BLOB_READ_WRITE_TOKEN", "token"), \
+         patch.object(src.cache.session, "delete", side_effect=requests.RequestException("Timeout")):
+         # Should not raise exception
+         clear_top("2026-05-28", "th_delhi")
+
+
+def test_blob_read_malformed_json_returns_empty():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch.object(src.cache.session, "get") as mock_get:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.side_effect = ValueError("Malformed JSON")
+        mock_get.return_value = mock_resp
+        assert read("2026-05-28", "th_delhi") == {}
+
+
+def test_blob_read_top_malformed_json_returns_empty():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch.object(src.cache.session, "get") as mock_get:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.side_effect = ValueError("Malformed JSON")
+        mock_get.return_value = mock_resp
+        assert read_top("2026-05-28", "th_delhi") == {}
+
+
+
 
 

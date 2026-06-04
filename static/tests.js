@@ -277,22 +277,12 @@
     assertEqual(state.limit, 10, "state.limit should be 10 by default");
   });
 
-  // Test Case 8: Limit Button Interaction updates state and triggers cache check
-  test("clicking limit button updates state.limit and triggers checkTopPicksCache if ready", async function() {
-    const originalFetch = global.fetch;
-    let fetchCalled = false;
-    let fetchedUrl = "";
-
-    global.fetch = async function(url) {
-      fetchCalled = true;
-      fetchedUrl = url;
-      return {
-        ok: true,
-        json: async () => ({
-          status: 'ready',
-          top_articles: []
-        })
-      };
+  // Test Case 8: Limit Button Interaction updates state and triggers renderTopPicksGrid
+  test("clicking limit button updates state.limit and triggers renderTopPicksGrid if ready", function() {
+    const originalRender = renderTopPicksGrid;
+    let renderCalled = false;
+    renderTopPicksGrid = function() {
+      renderCalled = true;
     };
 
     const originalStatus = state.topPicksStatus;
@@ -312,16 +302,15 @@
 
     assertEqual(state.limit, 20, "state.limit should update to 20");
     assertEqual(btn20.className, 'active', "clicked button should become active");
-    assert(fetchCalled, "fetch should be called via checkTopPicksCache");
-    assert(fetchedUrl.includes('limit=20'), "fetched URL should contain limit=20");
+    assert(renderCalled, "renderTopPicksGrid should be called");
 
     // Restore
-    global.fetch = originalFetch;
+    renderTopPicksGrid = originalRender;
     state.topPicksStatus = originalStatus;
   });
 
-  // Test Case 9: fetch calls append limit query parameter
-  test("checkTopPicksCache and generateTopPicks append limit to the fetch API requests", async function() {
+  // Test Case 9: fetch calls do NOT append limit query parameter
+  test("checkTopPicksCache and generateTopPicks do NOT append limit to the fetch API requests", async function() {
     const originalFetch = global.fetch;
     let requestedUrl = "";
 
@@ -341,10 +330,10 @@
     state.city = "th_delhi";
 
     await checkTopPicksCache("2026-05-28", "th_delhi");
-    assert(requestedUrl.includes('limit=25'), `Url should contain limit=25: ${requestedUrl}`);
+    assert(!requestedUrl.includes('limit='), `Url should NOT contain limit: ${requestedUrl}`);
 
     await generateTopPicks();
-    assert(requestedUrl.includes('limit=25'), `Url should contain limit=25: ${requestedUrl}`);
+    assert(!requestedUrl.includes('limit='), `Url should NOT contain limit: ${requestedUrl}`);
 
     global.fetch = originalFetch;
   });

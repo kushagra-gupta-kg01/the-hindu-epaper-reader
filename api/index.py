@@ -115,7 +115,7 @@ def get_top_headlines_endpoint(
     response: Response,
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
     city: str = Query(..., description="City ID, e.g. th_delhi"),
-    limit: int = Query(5, description="Number of top articles to return"),
+    limit: int = Query(None, description="Number of top articles to return"),
     generate: str = Query("false", description="Whether to generate if cache is missing (true/false)")
 ):
     # Validate date format (YYYY-MM-DD)
@@ -127,7 +127,7 @@ def get_top_headlines_endpoint(
         )
 
     # Validate limit
-    if limit <= 0:
+    if limit is not None and limit <= 0:
         raise HTTPException(
             status_code=422,
             detail="limit must be a positive integer",
@@ -137,7 +137,7 @@ def get_top_headlines_endpoint(
     # Cache hit path
     top_data = cache.read_top(date, city)
     if isinstance(top_data, dict) and top_data.get("status") == "ready":
-        if "top_articles" in top_data:
+        if "top_articles" in top_data and limit is not None:
             top_data["top_articles"] = top_data["top_articles"][:limit]
         cc_headers = get_cache_control_headers(date)
         response.headers.update(cc_headers)
@@ -174,7 +174,7 @@ def get_top_headlines_endpoint(
         )
 
     # Rank headlines using LLM
-    rank_limit = min(25, len(all_articles))
+    rank_limit = min(30, len(all_articles))
     try:
         raw_top_articles = llm.rank_headlines(headlines_data, rank_limit)
     except ValueError as e:
@@ -243,7 +243,7 @@ def get_top_headlines_endpoint(
 
     return {
         "status": "ready",
-        "top_articles": enriched_articles[:limit]
+        "top_articles": enriched_articles[:limit] if limit is not None else enriched_articles
     }
 
 

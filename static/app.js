@@ -295,7 +295,7 @@ function initApp() {
         btn.classList.add('active');
         state.limit = parseInt(btn.getAttribute('data-limit'), 10) || 10;
         if (state.topPicksStatus === 'ready') {
-          checkTopPicksCache(state.date, state.city);
+          renderTopPicksGrid();
         }
       });
     });
@@ -736,7 +736,8 @@ function renderTopPicksGrid() {
   aiPicksGrid.innerHTML = '';
   if (!state.topPicks || state.topPicks.length === 0) return;
 
-  state.topPicks.forEach((art, index) => {
+  const slicedPicks = state.topPicks.slice(0, state.limit);
+  slicedPicks.forEach((art, index) => {
     const rank = index + 1;
     const ratings = art.ratings || {};
     const impact = ratings.impact || 0;
@@ -824,7 +825,7 @@ async function checkTopPicksCache(date, city) {
   const requestCity = city;
 
   try {
-    const response = await fetch(`/api/top-headlines?date=${date}&city=${city}&generate=false&limit=${state.limit}`);
+    const response = await fetch(`/api/top-headlines?date=${date}&city=${city}&generate=false`);
     
     // Race-condition check
     if (state.date !== requestDate || state.city !== requestCity) {
@@ -873,7 +874,7 @@ async function generateTopPicks() {
   aiPicksSection.style.display = 'block';
 
   try {
-    const response = await fetch(`/api/top-headlines?date=${requestDate}&city=${requestCity}&generate=true&limit=${state.limit}`);
+    const response = await fetch(`/api/top-headlines?date=${requestDate}&city=${requestCity}&generate=true`);
     
     // Race-condition check
     if (state.date !== requestDate || state.city !== requestCity) {

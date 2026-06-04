@@ -54,6 +54,7 @@ def test_e2e_live_article():
 @pytest.mark.e2e
 def test_e2e_top_headlines():
     import os
+    import time
     from fastapi.testclient import TestClient
     from api.index import app
     from src import cache
@@ -67,43 +68,119 @@ def test_e2e_top_headlines():
     date = "2026-05-28"
     city = "th_delhi"
     
-    # Pre-clean cache to ensure we test full flow
-    cache.clear(date, city)
-    
-    # 2. Trigger live fetch to /api/headlines
-    resp_headlines = client.get(f"/api/headlines?date={date}&city={city}")
-    assert resp_headlines.status_code == 200
-    assert cache.exists(date, city)
-    
-    # 3. Trigger live top headlines generation
-    resp_top = client.get(f"/api/top-headlines?date={date}&city={city}&generate=true&limit=3")
-    assert resp_top.status_code == 200
-    
-    data = resp_top.json()
-    assert data["status"] == "ready"
-    assert len(data["top_articles"]) == 3
-    
-    for art in data["top_articles"]:
-        assert "id" in art
-        assert "headline" in art
-        assert "html_ref" in art
-        assert "images" in art
-        assert "ratings" in art
-        ratings = art["ratings"]
-        assert "impact" in ratings
-        assert "importance" in ratings
-        assert "interest" in ratings
-        assert "depth" in ratings
-        assert "reason" in art
-        assert isinstance(art["reason"], str)
-        # Reason should be short/concise (max 15 words)
-        words = art["reason"].split()
-        assert len(words) <= 15
+    try:
+        # Pre-clean cache to ensure we test full flow
+        cache.clear(date, city)
         
-    # 4. Trigger subsequent call to verify served from cache
-    resp_cache = client.get(f"/api/top-headlines?date={date}&city={city}&generate=false&limit=2")
-    assert resp_cache.status_code == 200
-    data_cache = resp_cache.json()
-    assert data_cache["status"] == "ready"
-    assert len(data_cache["top_articles"]) == 2
+        # 2. Trigger live fetch to /api/headlines
+        resp_headlines = client.get(f"/api/headlines?date={date}&city={city}")
+        assert resp_headlines.status_code == 200
+        assert resp_headlines.headers["Cache-Control"] == "public, max-age=31536000, immutable"
+        assert cache.exists(date, city)
+        
+        # 3. Trigger live top headlines generation (Cache Miss)
+        resp_top = client.get(f"/api/top-headlines?date={date}&city={city}&generate=true&limit=3")
+        assert resp_top.status_code == 200
+        assert resp_top.headers["Cache-Control"] == "public, max-age=31536000, immutable"
+        
+        data = resp_top.json()
+        assert data["status"] == "ready"
+        assert len(data["top_articles"]) == 3
+        
+        for art in data["top_articles"]:
+            assert "id" in art
+            assert "headline" in art
+            assert "html_ref" in art
+            assert "images" in art
+            assert "ratings" in art
+            ratings = art["ratings"]
+            assert "impact" in ratings
+            assert "importance" in ratings
+            assert "interest" in ratings
+            assert "depth" in ratings
+            assert "reason" in art
+            assert isinstance(art["reason"], str)
+            # Reason should be short/concise (max 15 words)
+            words = art["reason"].split()
+            assert len(words) <= 15
+            
+        # 4. Trigger subsequent call to verify served from cache (Cache Hit)
+        start = time.time()
+        resp_cache = client.get(f"/api/top-headlines?date={date}&city={city}&generate=false&limit=2")
+        elapsed_hit = time.time() - start
+        
+        assert resp_cache.status_code == 200
+        assert elapsed_hit < 3.0
+        assert resp_cache.headers["Cache-Control"] == "public, max-age=31536000, immutable"
+        
+        data_cache = resp_cache.json()
+        assert data_cache["status"] == "ready"
+        assert len(data_cache["top_articles"]) == 2
+    finally:
+        cache.clear(date, city)
+
+
+@pytest.mark.e2e
+def test_e2e_top_headlines_direct_self_healing():
+    import os
+    from fastapi.testclient import TestClient
+    from api.index import app
+    from src import cache
+
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key or not api_key.strip():
+        pytest.skip("OPENROUTER_API_KEY not configured. Skipping live OpenRouter E2E test.")
+
+    client = TestClient(app)
+    date = "2026-05-27"  # Separate date partition to isolate tests
+    city = "th_delhi"
+
+    try:
+        cache.clear(date, city)
+
+        # Call top-headlines directly (with generate=true) on a completely empty cache
+        resp = client.get(f"/api/top-headlines?date={date}&city={city}&generate=true&limit=2")
+        assert resp.status_code == 200
+        assert resp.headers["Cache-Control"] == "public, max-age=31536000, immutable"
+
+        data = resp.json()
+        assert data["status"] == "ready"
+        assert len(data["top_articles"]) == 2
+
+        # Verify that the main layout headlines cache exists as a result of self-healing
+        assert cache.exists(date, city) is True
+    finally:
+        cache.clear(date, city)
+
+
+@pytest.mark.e2e
+def test_e2e_validation_boundaries():
+    from fastapi.testclient import TestClient
+    from api.index import app
+    from src import cache
+
+    client = TestClient(app)
+    city = "th_delhi"
+
+    # 1. Invalid date format returns 422 with no-store
+    resp_invalid_date = client.get(f"/api/top-headlines?date=invalid-date&city={city}")
+    assert resp_invalid_date.status_code == 422
+    assert "no-store" in resp_invalid_date.headers.get("Cache-Control", "")
+
+    # 2. Invalid limit <= 0 returns 422 with no-store
+    resp_invalid_limit = client.get(f"/api/top-headlines?date=2026-05-28&city={city}&limit=0")
+    assert resp_invalid_limit.status_code == 422
+    assert "no-store" in resp_invalid_limit.headers.get("Cache-Control", "")
+
+    # 3. Cache Miss with generate=false returns not_generated with no-store
+    date = "2026-05-28"
+    try:
+        cache.clear(date, city)
+        resp_not_gen = client.get(f"/api/top-headlines?date={date}&city={city}&generate=false")
+        assert resp_not_gen.status_code == 200
+        assert resp_not_gen.json() == {"status": "not_generated"}
+        assert "no-store" in resp_not_gen.headers.get("Cache-Control", "")
+    finally:
+        cache.clear(date, city)
+
 

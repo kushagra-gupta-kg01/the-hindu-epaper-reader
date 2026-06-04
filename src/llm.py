@@ -72,12 +72,13 @@ def rank_headlines(headlines_data: dict, limit: int) -> list:
         "response_format": {"type": "json_object"},
     }
 
-    # 4. HTTP call with 8s timeout and connection pool reuse
+    # 4. HTTP call with 50s timeout and connection pool reuse
+    # (maxDuration in vercel.json is 60s; 10s buffer for cold start + Blob write)
     response = session.post(
         "https://openrouter.ai/api/v1/chat/completions",
         headers=headers,
         json=payload,
-        timeout=8
+        timeout=50
     )
     
     # Force UTF-8 decoding in case gateway headers are missing/incorrect

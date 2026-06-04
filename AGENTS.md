@@ -143,7 +143,7 @@ Below is the directory tree layout showing key files and directories:
 > **F. OpenRouter Credentials & Constraints**
 > Generating AI Picks requires the `OPENROUTER_API_KEY` environment variable.
 > * **Model Fallback**: Uses `openrouter/owl-alpha`, then falls back to `z-ai/glm-4.5-air:free`, then `google/gemma-4-31b-it:free`.
-> * **Timeout**: Call timeout is set to 8 seconds to stay safely within Vercel's 10-second serverless response window.
+> * **Timeout**: Call timeout is set to 50 seconds. The function `maxDuration` in `vercel.json` is set to 60 seconds (Hobby plan maximum), leaving a 10-second buffer for cold starts and Blob writes.
 
 > [!NOTE]
 > **G. LLM Prompt Injection & Suffix Sanitization**

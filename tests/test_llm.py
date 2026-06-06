@@ -72,7 +72,8 @@ def test_llm_success(sample_headlines):
     }
 
     with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
-         patch("src.llm.session.post", return_value=mock_response) as mock_post:
+         patch("src.llm.session.post", return_value=mock_response) as mock_post, \
+         patch("src.telemetry.log_event") as mock_log:
          
         # WHEN we execute the ranking
         result = rank_headlines(sample_headlines, limit=2)
@@ -88,6 +89,15 @@ def test_llm_success(sample_headlines):
         assert kwargs["json"]["models"][0] == "openrouter/owl-alpha"
         assert kwargs["json"]["response_format"] == {"type": "json_object"}
         assert "mock_secret_key" in kwargs["headers"]["Authorization"]
+        
+        # Verify telemetry
+        mock_log.assert_called_once()
+        t_args, t_kwargs = mock_log.call_args
+        assert t_args[0] == "llm_ranking"
+        assert t_args[1]["article_count"] == 3
+        assert "duration_ms" in t_args[1]
+        assert t_args[1]["model"] == "openrouter/owl-alpha"
+
 
 
 def test_llm_json_decode_error(sample_headlines):

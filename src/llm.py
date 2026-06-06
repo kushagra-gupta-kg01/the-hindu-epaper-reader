@@ -74,15 +74,37 @@ def rank_headlines(headlines_data: dict, limit: int) -> list:
 
     # 4. HTTP call with 50s timeout and connection pool reuse
     # (maxDuration in vercel.json is 60s; 10s buffer for cold start + Blob write)
-    response = session.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers=headers,
-        json=payload,
-        timeout=50
-    )
+    import src.telemetry
+    import time
     
-    # Force UTF-8 decoding in case gateway headers are missing/incorrect
-    response.encoding = "utf-8"
+    start_time = time.perf_counter()
+    response = None
+    error_class = None
+    status_code = None
+    try:
+        response = session.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=50
+        )
+        response.encoding = "utf-8"
+        status_code = response.status_code
+    except Exception as e:
+        error_class = type(e).__name__
+        raise e
+    finally:
+        duration_ms = (time.perf_counter() - start_time) * 1000.0
+        details = {
+            "model": "openrouter/owl-alpha",
+            "article_count": len(formatted_lines),
+            "duration_ms": duration_ms
+        }
+        if status_code is not None:
+            details["status_code"] = status_code
+        if error_class:
+            details["error"] = error_class
+        src.telemetry.log_event("llm_ranking", details)
     
     # 5. Diagnostic parsing and rate limit check
     try:

@@ -113,7 +113,8 @@ def test_cache_directory_resolves_to_tmp_in_serverless():
 
 
 def test_cache_read_exception_returns_empty():
-    with patch("builtins.open", side_effect=OSError("Read error")):
+    with patch("os.path.exists", return_value=True), \
+         patch("builtins.open", side_effect=OSError("Read error")):
         assert read("2026-05-27", "th_delhi") == {}
 
 
@@ -232,7 +233,8 @@ def test_top_cache_clear_cohesion():
 
 
 def test_top_cache_read_exception():
-    with patch("builtins.open", side_effect=OSError("Read error")):
+    with patch("os.path.exists", return_value=True), \
+         patch("builtins.open", side_effect=OSError("Read error")):
         assert read_top("2026-05-27", "th_delhi") == {}
 
 
@@ -573,6 +575,59 @@ def test_blob_read_top_malformed_json_returns_empty():
         mock_resp.json.side_effect = ValueError("Malformed JSON")
         mock_get.return_value = mock_resp
         assert read_top("2026-05-28", "th_delhi") == {}
+
+
+def test_cache_telemetry_read_hit():
+    with patch("src.cache.BLOB_STORE_URL", ""), \
+         patch("builtins.open", MagicMock()), \
+         patch("json.load", return_value={"mock": "data"}), \
+         patch("os.path.exists", return_value=True), \
+         patch("src.telemetry.log_event") as mock_log:
+        res = read("2026-05-28", "th_delhi")
+        assert res == {"mock": "data"}
+        mock_log.assert_called_once()
+        args, kwargs = mock_log.call_args
+        assert args[0] == "cache_read"
+        assert args[1]["status"] == "hit"
+        assert args[1]["location"] == "local"
+
+def test_cache_telemetry_read_miss():
+    with patch("src.cache.BLOB_STORE_URL", ""), \
+         patch("os.path.exists", return_value=False), \
+         patch("src.telemetry.log_event") as mock_log:
+        res = read("2026-05-28", "th_delhi")
+        assert res == {}
+        mock_log.assert_called_once()
+        args, kwargs = mock_log.call_args
+        assert args[0] == "cache_read"
+        assert args[1]["status"] == "miss"
+
+def test_cache_telemetry_write_success():
+    with patch("src.cache.BLOB_STORE_URL", ""), \
+         patch("os.makedirs"), \
+         patch("builtins.open"), \
+         patch("json.dump"), \
+         patch("os.replace"), \
+         patch("src.telemetry.log_event") as mock_log:
+        res = write("2026-05-28", "th_delhi", {"data": 1})
+        assert res is True
+        mock_log.assert_called_once()
+        args, kwargs = mock_log.call_args
+        assert args[0] == "cache_write"
+        assert args[1]["status"] == "success"
+
+def test_cache_telemetry_blob_timeout():
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch.object(src.cache.session, "get", side_effect=requests.exceptions.ConnectTimeout("Connection timed out")), \
+         patch("src.telemetry.log_event") as mock_log:
+        res = read("2026-05-28", "th_delhi")
+        assert res == {}
+        mock_log.assert_called_once()
+        args, kwargs = mock_log.call_args
+        assert args[0] == "cache_read"
+        assert args[1]["status"] == "miss"
+        assert args[1]["error"] == "ConnectTimeout"
+
 
 
 

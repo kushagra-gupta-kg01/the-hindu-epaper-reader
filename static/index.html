@@ -32,6 +32,25 @@
   </script>
 
   <link rel="stylesheet" href="index.css">
+
+  <!-- Vercel Speed Insights -->
+  <script defer src="/_vercel/insights/script.js"></script>
+
+  <!-- Sentry Browser SDK CDN -->
+  <script src="https://browser.sentry-cdn.com/7.114.0/bundle.min.js" crossorigin="anonymous"></script>
+  <script>
+    (function() {
+      if (typeof Sentry !== 'undefined') {
+        const dsn = window.SENTRY_DSN || "";
+        if (dsn) {
+          Sentry.init({
+            dsn: dsn,
+            tracesSampleRate: 0.1
+          });
+        }
+      }
+    })();
+  </script>
 </head>
 <body>
 

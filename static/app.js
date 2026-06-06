@@ -21,6 +21,35 @@ const state = {
   paperStyle: 'paper-ivory'
 };
 
+// ==========================================================================
+// TELEMETRY & ERROR TRACKING PROXIES
+// ==========================================================================
+
+function captureException(error) {
+  if (typeof Sentry !== 'undefined' && Sentry.captureException) {
+    Sentry.captureException(error);
+  } else {
+    console.error("Blocked/Fallback captureException:", error);
+  }
+}
+
+function logInteraction(eventName, details = {}) {
+  if (typeof Sentry !== 'undefined' && Sentry.addBreadcrumb) {
+    Sentry.addBreadcrumb({
+      category: 'ui',
+      message: eventName,
+      data: details,
+      level: 'info'
+    });
+  }
+  console.log(`[Interaction] ${eventName}`, details);
+}
+
+if (typeof window !== 'undefined') {
+  window.captureException = captureException;
+  window.logInteraction = logInteraction;
+}
+
 // DOM Elements
 const dateSelect = document.getElementById('date-select');
 const citySelect = document.getElementById('city-select');
@@ -244,6 +273,7 @@ function initApp() {
     btn.addEventListener('click', () => {
       const selectedPaper = btn.getAttribute('data-paper');
       if (selectedPaper) {
+        logInteraction("paper_style_changed", { paper: selectedPaper });
         state.paperStyle = selectedPaper;
         localStorage.setItem('the-hindu-reader-paper', selectedPaper);
         
@@ -267,6 +297,7 @@ function initApp() {
     bionicToggleBtn.addEventListener('click', () => {
       state.bionicReading = !state.bionicReading;
       localStorage.setItem('bionic-enabled', state.bionicReading);
+      logInteraction("bionic_toggled", { enabled: state.bionicReading });
       syncBionicUI();
       renderArticleContent();
     });
@@ -276,6 +307,7 @@ function initApp() {
     bionicFixationSelect.addEventListener('change', () => {
       state.fixationPoint = parseInt(bionicFixationSelect.value, 10) || 3;
       localStorage.setItem('bionic-fixation', state.fixationPoint);
+      logInteraction("bionic_fixation_changed", { fixation: state.fixationPoint });
       renderArticleContent();
     });
   }
@@ -376,6 +408,7 @@ function syncUrlHistory() {
 
 // Apply the theme class to HTML root
 function applyTheme(themeClass) {
+  logInteraction("theme_changed", { theme: themeClass });
   const allThemes = ['theme-broadside', 'theme-folio', 'theme-dispatch', 'theme-gutenberg'];
   allThemes.forEach(t => document.documentElement.classList.remove(t));
   document.documentElement.classList.add(themeClass);
@@ -501,6 +534,7 @@ async function fetchHeadlines() {
       checkTopPicksCache(state.date, state.city);
     }
   } catch (error) {
+    captureException(error);
     showBanner(`Network error: Unable to connect to server.`);
     mainLoader.style.display = 'none';
   }
@@ -859,6 +893,7 @@ async function checkTopPicksCache(date, city) {
       aiPicksSection.style.display = 'block';
     }
   } catch (error) {
+    captureException(error);
     console.error("Error checking top picks cache:", error);
     if (state.date === requestDate && state.city === requestCity) {
       aiPicksSection.style.display = 'none';
@@ -901,6 +936,7 @@ async function generateTopPicks() {
       throw new Error("Data not ready");
     }
   } catch (error) {
+    captureException(error);
     console.error("Error generating top picks:", error);
     if (state.date === requestDate && state.city === requestCity) {
       state.topPicksStatus = 'failed';
@@ -960,6 +996,7 @@ async function openArticleReader(htmlRef) {
     readerLoader.style.display = 'none';
     readerContent.style.display = 'block';
   } catch (error) {
+    captureException(error);
     readerLoader.style.display = 'none';
     const errorDiv = document.createElement('div');
     errorDiv.className = 'empty-state';

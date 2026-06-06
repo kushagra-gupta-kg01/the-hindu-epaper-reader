@@ -1,14 +1,19 @@
 import re
 import os
+import time
+import traceback
 import requests
 from fastapi import FastAPI, Query, HTTPException, Response
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 from src import service
 from src import scraper
 from src import parser
 from src import cache
 from src import llm
+from src import telemetry
 from src.cache import get_ist_today_str
 
 def get_cache_control_headers(date: str) -> dict:
@@ -18,6 +23,40 @@ def get_cache_control_headers(date: str) -> dict:
         return {"Cache-Control": "public, max-age=31536000, immutable"}
 
 ERROR_HEADERS = {"Cache-Control": "no-store, no-cache, must-revalidate"}
+
+class TelemetryMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if not request.url.path.startswith("/api"):
+            return await call_next(request)
+        
+        start_time = time.perf_counter()
+        method = request.method
+        path = request.url.path
+        
+        try:
+            response = await call_next(request)
+            duration_ms = (time.perf_counter() - start_time) * 1000.0
+            telemetry.log_event("request_processed", {
+                "method": method,
+                "path": path,
+                "status_code": response.status_code,
+                "duration_ms": duration_ms
+            })
+            return response
+        except Exception as exc:
+            duration_ms = (time.perf_counter() - start_time) * 1000.0
+            telemetry.log_event("unhandled_exception", {
+                "method": method,
+                "path": path,
+                "error": str(exc),
+                "traceback": traceback.format_exc(),
+                "duration_ms": duration_ms
+            })
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Internal server error"},
+                headers=ERROR_HEADERS
+            )
 
 app = FastAPI(title="The Hindu ePaper Extractor API")
 
@@ -29,6 +68,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(TelemetryMiddleware)
+
+@app.get("/api/test-unhandled-error")
+def test_unhandled_error_endpoint():
+    raise RuntimeError("Simulated unhandled exception")
 
 def get_article_id_from_ref(ref: str) -> str:
     # E.g., "GKLG1M8CQ.1+GO1G1NQTF.1.html" or "GKLG1M8CQ.1 GO1G1NQTF.1.html"

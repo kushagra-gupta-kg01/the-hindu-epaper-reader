@@ -543,6 +543,7 @@ def test_top_headlines_write_failure_non_fatal():
          patch("src.llm.rank_headlines", return_value=mock_llm_result), \
          patch("src.cache.write_top", return_value=False) as mock_write:
          
+        # Make request
         response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
         assert response.status_code == 200
         data = response.json()
@@ -550,6 +551,71 @@ def test_top_headlines_write_failure_non_fatal():
         assert len(data["top_articles"]) == 1
         assert data["top_articles"][0]["id"] == "GO1G1NQTF.1"
         mock_write.assert_called_once()
+
+
+def test_api_telemetry_middleware_success():
+    mock_headlines = {"date": "2026-05-28", "city": "th_delhi", "pages": []}
+    with patch("src.cache.exists", return_value=True), \
+         patch("src.cache.read", return_value=mock_headlines), \
+         patch("src.telemetry.log_event") as mock_log:
+        response = client.get("/api/headlines?date=2026-05-28&city=th_delhi")
+        assert response.status_code == 200
+        
+        # Telemetry should be called once for cache read and once for request middleware processing
+        assert mock_log.call_count >= 1
+        events = [call[0][0] for call in mock_log.call_args_list]
+        assert "request_processed" in events
+        
+        req_call = [call for call in mock_log.call_args_list if call[0][0] == "request_processed"][0]
+        details = req_call[0][1]
+        assert details["path"] == "/api/headlines"
+        assert details["method"] == "GET"
+        assert details["status_code"] == 200
+        assert "duration_ms" in details
+
+def test_api_telemetry_middleware_skipped_for_static():
+    with patch("src.telemetry.log_event") as mock_log:
+        response = client.get("/index.css")
+        assert response.status_code == 200
+        
+        # Should not write telemetry for static files
+        events = [call[0][0] for call in mock_log.call_args_list]
+        assert "request_processed" not in events
+
+def test_api_telemetry_middleware_unhandled_exception():
+    with patch("src.service.get_headlines", side_effect=RuntimeError("Unexpected error")), \
+         patch("src.cache.exists", return_value=False), \
+         patch("src.telemetry.log_event") as mock_log:
+        response = client.get("/api/headlines?date=2026-05-28&city=th_delhi")
+        assert response.status_code == 500
+        
+        events = [call[0][0] for call in mock_log.call_args_list]
+        assert "unhandled_exception" in events or "request_processed" in events
+
+
+def test_api_unhandled_exception_logging_and_json_response():
+    with patch("src.telemetry.log_event") as mock_log:
+        response = client.get("/api/test-unhandled-error")
+        assert response.status_code == 500
+        
+        # Verify it returns a structured JSON response
+        data = response.json()
+        assert "detail" in data
+        assert data["detail"] == "Internal server error"
+        
+        # Verify the telemetry captured the unhandled exception
+        events = [call[0][0] for call in mock_log.call_args_list]
+        assert "unhandled_exception" in events
+        
+        # Check details of unhandled exception log
+        err_call = [call for call in mock_log.call_args_list if call[0][0] == "unhandled_exception"][0]
+        details = err_call[0][1]
+        assert details["path"] == "/api/test-unhandled-error"
+        assert details["method"] == "GET"
+        assert "error" in details
+        assert "traceback" in details
+        assert "duration_ms" in details
+
 
 
 

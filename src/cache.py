@@ -61,64 +61,113 @@ def exists(date: str, city: str) -> bool:
     return os.path.exists(path)
 
 def read(date: str, city: str) -> dict:
-    if BLOB_STORE_URL:
-        url = get_blob_url(date, city)
-        try:
-            resp = session.get(url, timeout=4.0)
-            if resp.status_code == 200:
-                return resp.json()
-            return {}
-        except Exception as e:
-            logger.warning(f"Error reading cache from Vercel Blob: {e}")
-            return {}
-
-    # Fallback to local
-    path = get_filepath(date, city)
+    import src.telemetry
+    import time
+    
+    start_time = time.perf_counter()
+    status = "miss"
+    location = "blob" if BLOB_STORE_URL else "local"
+    error_class = None
+    result = {}
+    
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {}
+        if BLOB_STORE_URL:
+            url = get_blob_url(date, city)
+            try:
+                resp = session.get(url, timeout=4.0)
+                if resp.status_code == 200:
+                    result = resp.json()
+                    status = "hit"
+            except Exception as e:
+                error_class = type(e).__name__
+                logger.warning(f"Error reading cache from Vercel Blob: {e}")
+        else:
+            path = get_filepath(date, city)
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        result = json.load(f)
+                        status = "hit"
+                except Exception as e:
+                    error_class = type(e).__name__
+    finally:
+        duration_ms = (time.perf_counter() - start_time) * 1000.0
+        details = {
+            "date": date,
+            "city": city,
+            "status": status,
+            "location": location,
+            "duration_ms": duration_ms
+        }
+        if error_class:
+            details["error"] = error_class
+        src.telemetry.log_event("cache_read", details)
+        
+    return result
 
 def write(date: str, city: str, data: dict) -> bool:
-    if BLOB_STORE_URL:
-        if not BLOB_READ_WRITE_TOKEN:
-            logger.warning("BLOB_READ_WRITE_TOKEN is not set; cannot write to Vercel Blob.")
-            return False
-        
-        # Write to Vercel Blob write endpoint
-        url = f"https://blob.vercel-storage.com/headlines/{date}/{city}.json"
-        headers = {
-            "Authorization": f"Bearer {BLOB_READ_WRITE_TOKEN}",
-            "x-api-version": "1",
-            "x-add-random-suffix": "0",
-            "Content-Type": "application/json"
-        }
-        try:
-            resp = session.put(url, headers=headers, data=json.dumps(data, indent=2), timeout=4.0)
-            resp.raise_for_status()
-            return True
-        except requests.RequestException as e:
-            logger.warning(f"Error writing cache to Vercel Blob: {e}")
-            return False
-
-    # Fallback to local file cache
-    path = get_filepath(date, city)
-    directory = os.path.dirname(path)
-    temp_path = f"{path}.tmp.{uuid.uuid4()}"
+    import src.telemetry
+    import time
+    
+    start_time = time.perf_counter()
+    status = "failure"
+    location = "blob" if BLOB_STORE_URL else "local"
+    error_class = None
+    success = False
+    
     try:
-        os.makedirs(directory, exist_ok=True)
-        with open(temp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        os.replace(temp_path, path)
-        return True
-    except Exception:
-        if os.path.exists(temp_path):
+        if BLOB_STORE_URL:
+            if not BLOB_READ_WRITE_TOKEN:
+                logger.warning("BLOB_READ_WRITE_TOKEN is not set; cannot write to Vercel Blob.")
+                return False
+            
+            url = f"https://blob.vercel-storage.com/headlines/{date}/{city}.json"
+            headers = {
+                "Authorization": f"Bearer {BLOB_READ_WRITE_TOKEN}",
+                "x-api-version": "1",
+                "x-add-random-suffix": "0",
+                "Content-Type": "application/json"
+            }
             try:
-                os.remove(temp_path)
-            except:
-                pass
-        return False
+                resp = session.put(url, headers=headers, data=json.dumps(data, indent=2), timeout=4.0)
+                resp.raise_for_status()
+                success = True
+                status = "success"
+            except Exception as e:
+                error_class = type(e).__name__
+                logger.warning(f"Error writing cache to Vercel Blob: {e}")
+        else:
+            path = get_filepath(date, city)
+            directory = os.path.dirname(path)
+            temp_path = f"{path}.tmp.{uuid.uuid4()}"
+            try:
+                os.makedirs(directory, exist_ok=True)
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+                os.replace(temp_path, path)
+                success = True
+                status = "success"
+            except Exception as e:
+                error_class = type(e).__name__
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except:
+                        pass
+    finally:
+        duration_ms = (time.perf_counter() - start_time) * 1000.0
+        details = {
+            "date": date,
+            "city": city,
+            "status": status,
+            "location": location,
+            "duration_ms": duration_ms
+        }
+        if error_class:
+            details["error"] = error_class
+        src.telemetry.log_event("cache_write", details)
+        
+    return success
 
 def clear(date: str, city: str):
     if BLOB_STORE_URL:
@@ -178,64 +227,113 @@ def top_exists(date: str, city: str) -> bool:
     return True
 
 def read_top(date: str, city: str) -> dict:
-    if BLOB_STORE_URL:
-        url = get_top_blob_url(date, city)
-        try:
-            resp = session.get(url, timeout=4.0)
-            if resp.status_code == 200:
-                return resp.json()
-            return {}
-        except Exception as e:
-            logger.warning(f"Error reading top cache from Vercel Blob: {e}")
-            return {}
-
-    # Fallback to local file cache
-    path = get_top_filepath(date, city)
+    import src.telemetry
+    import time
+    
+    start_time = time.perf_counter()
+    status = "miss"
+    location = "blob" if BLOB_STORE_URL else "local"
+    error_class = None
+    result = {}
+    
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {}
+        if BLOB_STORE_URL:
+            url = get_top_blob_url(date, city)
+            try:
+                resp = session.get(url, timeout=4.0)
+                if resp.status_code == 200:
+                    result = resp.json()
+                    status = "hit"
+            except Exception as e:
+                error_class = type(e).__name__
+                logger.warning(f"Error reading top cache from Vercel Blob: {e}")
+        else:
+            path = get_top_filepath(date, city)
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        result = json.load(f)
+                        status = "hit"
+                except Exception as e:
+                    error_class = type(e).__name__
+    finally:
+        duration_ms = (time.perf_counter() - start_time) * 1000.0
+        details = {
+            "date": date,
+            "city": city,
+            "status": status,
+            "location": location,
+            "duration_ms": duration_ms
+        }
+        if error_class:
+            details["error"] = error_class
+        src.telemetry.log_event("cache_read_top", details)
+        
+    return result
 
 def write_top(date: str, city: str, data: dict) -> bool:
-    if BLOB_STORE_URL:
-        if not BLOB_READ_WRITE_TOKEN:
-            logger.warning("BLOB_READ_WRITE_TOKEN is not set; cannot write to Vercel Blob.")
-            return False
-        
-        # Write to Vercel Blob write endpoint
-        url = f"https://blob.vercel-storage.com/top-headlines/{date}/{city}_top.json"
-        headers = {
-            "Authorization": f"Bearer {BLOB_READ_WRITE_TOKEN}",
-            "x-api-version": "1",
-            "x-add-random-suffix": "0",
-            "Content-Type": "application/json"
-        }
-        try:
-            resp = session.put(url, headers=headers, data=json.dumps(data, indent=2), timeout=4.0)
-            resp.raise_for_status()
-            return True
-        except requests.RequestException as e:
-            logger.warning(f"Error writing top cache to Vercel Blob: {e}")
-            return False
-
-    # Fallback to local file cache
-    path = get_top_filepath(date, city)
-    directory = os.path.dirname(path)
-    temp_path = f"{path}.tmp.{uuid.uuid4()}"
+    import src.telemetry
+    import time
+    
+    start_time = time.perf_counter()
+    status = "failure"
+    location = "blob" if BLOB_STORE_URL else "local"
+    error_class = None
+    success = False
+    
     try:
-        os.makedirs(directory, exist_ok=True)
-        with open(temp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        os.replace(temp_path, path)
-        return True
-    except Exception:
-        if os.path.exists(temp_path):
+        if BLOB_STORE_URL:
+            if not BLOB_READ_WRITE_TOKEN:
+                logger.warning("BLOB_READ_WRITE_TOKEN is not set; cannot write to Vercel Blob.")
+                return False
+            
+            url = f"https://blob.vercel-storage.com/top-headlines/{date}/{city}_top.json"
+            headers = {
+                "Authorization": f"Bearer {BLOB_READ_WRITE_TOKEN}",
+                "x-api-version": "1",
+                "x-add-random-suffix": "0",
+                "Content-Type": "application/json"
+            }
             try:
-                os.remove(temp_path)
-            except:
-                pass
-        return False
+                resp = session.put(url, headers=headers, data=json.dumps(data, indent=2), timeout=4.0)
+                resp.raise_for_status()
+                success = True
+                status = "success"
+            except Exception as e:
+                error_class = type(e).__name__
+                logger.warning(f"Error writing top cache to Vercel Blob: {e}")
+        else:
+            path = get_top_filepath(date, city)
+            directory = os.path.dirname(path)
+            temp_path = f"{path}.tmp.{uuid.uuid4()}"
+            try:
+                os.makedirs(directory, exist_ok=True)
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+                os.replace(temp_path, path)
+                success = True
+                status = "success"
+            except Exception as e:
+                error_class = type(e).__name__
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except:
+                        pass
+    finally:
+        duration_ms = (time.perf_counter() - start_time) * 1000.0
+        details = {
+            "date": date,
+            "city": city,
+            "status": status,
+            "location": location,
+            "duration_ms": duration_ms
+        }
+        if error_class:
+            details["error"] = error_class
+        src.telemetry.log_event("cache_write_top", details)
+        
+    return success
 
 def clear_top(date: str, city: str):
     if BLOB_STORE_URL:

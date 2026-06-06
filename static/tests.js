@@ -503,6 +503,90 @@
   });
 
   // ==========================================================================
+  // TELEMETRY & OBSERVABILITY TDD TESTS
+  // ==========================================================================
+
+  test("captureException delegates to Sentry when available and falls back to console.error when blocked", function() {
+    const originalSentry = global.Sentry;
+    const originalConsoleError = console.error;
+    let consoleErrorCalled = false;
+    let consoleErrorArg = null;
+    
+    console.error = function(msg, err) {
+      consoleErrorCalled = true;
+      consoleErrorArg = err || msg;
+    };
+    
+    const mockError = new Error("Test captureException");
+    
+    // Scenario A: Sentry is blocked / not defined
+    global.Sentry = undefined;
+    if (typeof window !== 'undefined') window.Sentry = undefined;
+    
+    captureException(mockError);
+    assertEqual(consoleErrorCalled, true, "Should fall back to console.error when Sentry is not available");
+    assertEqual(consoleErrorArg, mockError, "Should print the correct error object");
+    
+    // Scenario B: Sentry is available
+    let sentryCalled = false;
+    let sentryArg = null;
+    global.Sentry = {
+      captureException: function(err) {
+        sentryCalled = true;
+        sentryArg = err;
+      }
+    };
+    if (typeof window !== 'undefined') window.Sentry = global.Sentry;
+    
+    consoleErrorCalled = false;
+    captureException(mockError);
+    assertEqual(sentryCalled, true, "Should delegate to Sentry.captureException when available");
+    assertEqual(sentryArg, mockError, "Should pass the correct error object to Sentry");
+    assertEqual(consoleErrorCalled, false, "Should not fall back to console.error when Sentry is available");
+    
+    // Restore
+    global.Sentry = originalSentry;
+    if (typeof window !== 'undefined') window.Sentry = originalSentry;
+    console.error = originalConsoleError;
+  });
+
+  test("logInteraction writes info to console and adds Sentry breadcrumb if available", function() {
+    const originalSentry = global.Sentry;
+    const originalConsoleLog = console.log;
+    
+    let consoleLogCalled = false;
+    let consoleLogArgs = [];
+    console.log = function(...args) {
+      consoleLogCalled = true;
+      consoleLogArgs = args;
+    };
+    
+    let breadcrumbAdded = false;
+    let breadcrumbArg = null;
+    global.Sentry = {
+      addBreadcrumb: function(crumb) {
+        breadcrumbAdded = true;
+        breadcrumbArg = crumb;
+      }
+    };
+    if (typeof window !== 'undefined') window.Sentry = global.Sentry;
+    
+    logInteraction("theme_changed", { theme: "theme-gutenberg" });
+    
+    assertEqual(consoleLogCalled, true, "Should write to console.log");
+    assert(consoleLogArgs[0].includes("theme_changed"), "Console log should include event name");
+    assertEqual(breadcrumbAdded, true, "Should add Sentry breadcrumb");
+    assertEqual(breadcrumbArg.category, "ui");
+    assertEqual(breadcrumbArg.message, "theme_changed");
+    assertEqual(breadcrumbArg.data.theme, "theme-gutenberg");
+    
+    // Restore
+    global.Sentry = originalSentry;
+    if (typeof window !== 'undefined') window.Sentry = originalSentry;
+    console.log = originalConsoleLog;
+  });
+
+  // ==========================================================================
   // RUNNER ENGINE
   // ==========================================================================
 

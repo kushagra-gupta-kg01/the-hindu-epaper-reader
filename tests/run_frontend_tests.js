@@ -4,7 +4,28 @@ const path = require('path');
 const indexHtmlPath = path.join(__dirname, '..', 'static', 'index.html');
 const indexHtml = fs.readFileSync(indexHtmlPath, 'utf8');
 
+// Assert that Vercel Speed Insights and Sentry tags exist in index.html
+if (!indexHtml.includes('/_vercel/insights/script.js')) {
+  console.error("RED PHASE FAILURE: Vercel Speed Insights script tag is missing in index.html");
+  process.exit(1);
+}
+if (!indexHtml.includes('browser.sentry-cdn.com') && !indexHtml.includes('js.sentry-cdn.com')) {
+  console.error("RED PHASE FAILURE: Sentry browser SDK CDN tag is missing in index.html");
+  process.exit(1);
+}
+
 // 1. Mock Browser Environment Globals
+global.Sentry = {
+  init: function(config) {
+    this.config = config;
+  },
+  captureException: function(err) {
+    this.lastException = err;
+    this.exceptions = this.exceptions || [];
+    this.exceptions.push(err);
+  }
+};
+
 global.window = {
   __TEST_MODE__: true,
   location: {
@@ -17,7 +38,8 @@ global.window = {
   scrollY: 0,
   scrollTo: function() {},
   addEventListener: function() {},
-  removeEventListener: function() {}
+  removeEventListener: function() {},
+  Sentry: global.Sentry
 };
 
 global.localStorage = {

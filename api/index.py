@@ -292,6 +292,11 @@ def get_top_headlines_endpoint(
     }
 
 
+@app.get("/_vercel/insights/script.js")
+@app.get("/_vercel/speed-insights/script.js")
+def mock_vercel_analytics():
+    return Response(content="/* Local mock */", media_type="application/javascript")
+
 # Resolve absolute path to static directory to ensure compatibility
 current_dir = os.path.dirname(os.path.abspath(__file__))
 static_dir = os.path.join(current_dir, "..", "static")

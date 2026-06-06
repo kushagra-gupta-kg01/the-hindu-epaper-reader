@@ -617,6 +617,21 @@ def test_api_unhandled_exception_logging_and_json_response():
         assert "duration_ms" in details
 
 
+def test_vercel_analytics_mocks():
+    # Test Web Analytics script mock endpoint
+    response = client.get("/_vercel/insights/script.js")
+    assert response.status_code == 200
+    assert response.headers["Content-Type"] == "application/javascript"
+    assert response.text == "/* Local mock */"
+
+    # Test Speed Insights script mock endpoint
+    response = client.get("/_vercel/speed-insights/script.js")
+    assert response.status_code == 200
+    assert response.headers["Content-Type"] == "application/javascript"
+    assert response.text == "/* Local mock */"
+
+
+
 
 
 

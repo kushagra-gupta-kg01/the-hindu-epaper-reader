@@ -33,6 +33,12 @@ class ThreadLocalSessionProxy:
 # Thread-safe session proxy configured at module level for connection pooling
 session = ThreadLocalSessionProxy()
 
+MODELS_LIST = [
+    "openrouter/owl-alpha",
+    "z-ai/glm-4.5-air:free",
+    "google/gemma-4-31b-it:free",
+]
+
 
 def rank_headlines(headlines_data: dict, limit: int) -> list:
     api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -95,94 +101,119 @@ def rank_headlines(headlines_data: dict, limit: int) -> list:
         "HTTP-Referer": "https://github.com/kushagra-gupta-kg01/the-hindu-epaper-reader",
         "X-Title": "The Hindu ePaper Reader",
     }
-    payload = {
-        "model": "openrouter/owl-alpha",
-        "models": [
-            "openrouter/owl-alpha",
-            "z-ai/glm-4.5-air:free",
-            "google/gemma-4-31b-it:free",
-        ],
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        "response_format": {"type": "json_object"},
-    }
 
-    # 4. HTTP call with 50s timeout and connection pool reuse
-    # (maxDuration in vercel.json is 60s; 10s buffer for cold start + Blob write)
     import src.telemetry
     import time
-    
-    start_time = time.perf_counter()
-    response = None
-    error_class = None
-    status_code = None
-    try:
-        response = session.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=50
-        )
-        response.encoding = "utf-8"
-        status_code = response.status_code
-    except Exception as e:
-        error_class = type(e).__name__
-        raise e
-    finally:
-        duration_ms = (time.perf_counter() - start_time) * 1000.0
-        details = {
-            "model": "openrouter/owl-alpha",
-            "article_count": len(formatted_lines),
-            "duration_ms": duration_ms
+
+    last_exception = None
+
+    for model_name in MODELS_LIST:
+        payload = {
+            "model": model_name,
+            "models": [model_name],
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "response_format": {"type": "json_object"},
         }
-        if status_code is not None:
-            details["status_code"] = status_code
-        if error_class:
+
+        start_time = time.perf_counter()
+        response = None
+        error_class = None
+        status_code = None
+        try:
+            # 4. HTTP call with bounded timeout per model attempt (16s)
+            response = session.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=16
+            )
+            response.encoding = "utf-8"
+            status_code = response.status_code
+
+            try:
+                res_data = response.json()
+                is_json = True
+            except Exception:
+                res_data = {}
+                is_json = False
+
+            if not is_json and response.status_code == 200:
+                raise ValueError(f"AI response was malformed and could not be parsed as JSON: {response.text}")
+
+            if "error" in res_data:
+                error_msg = res_data["error"].get("message", "Unknown error")
+                if response.status_code == 429:
+                    retry_after = response.headers.get("Retry-After")
+                    if retry_after:
+                        print(f"Rate limit hit. Retry-After: {retry_after} seconds.")
+                raise ValueError(f"OpenRouter API Error: {error_msg}")
+
+            if response.status_code != 200:
+                if is_json:
+                    raise ValueError(f"HTTP {response.status_code}: {res_data}")
+                else:
+                    raise ValueError(f"AI response was malformed and could not be parsed as JSON: {response.text}")
+
+            choices = res_data.get("choices", [])
+            if not choices:
+                raise ValueError(f"OpenRouter returned empty choices. Payload: {res_data}")
+
+            content = choices[0].get("message", {}).get("content", "")
+            if not content:
+                raise ValueError(f"OpenRouter returned empty message content. Payload: {res_data}")
+
+            # Remove markdown codeblock qualifiers
+            content_clean = content.strip()
+            if content_clean.startswith("```json"):
+                content_clean = content_clean[7:]
+            if content_clean.startswith("```"):
+                content_clean = content_clean[3:]
+            if content_clean.endswith("```"):
+                content_clean = content_clean[:-3]
+            content_clean = content_clean.strip()
+
+            try:
+                parsed_json = json.loads(content_clean)
+            except Exception as e:
+                raise ValueError(f"AI response was malformed and could not be parsed as JSON: {e}")
+
+            top_articles = parsed_json.get("top_articles", [])
+
+            # Successfully completed ranking! Log success telemetry
+            duration_ms = (time.perf_counter() - start_time) * 1000.0
+            src.telemetry.log_event("llm_ranking", {
+                "model": model_name,
+                "article_count": len(formatted_lines),
+                "duration_ms": duration_ms,
+                "status_code": status_code,
+                "status": "success"
+            })
+            return top_articles
+
+        except Exception as e:
+            error_class = type(e).__name__
+            last_exception = e
+            duration_ms = (time.perf_counter() - start_time) * 1000.0
+
+            # Log failure details for this specific model attempt
+            details = {
+                "model": model_name,
+                "article_count": len(formatted_lines),
+                "duration_ms": duration_ms,
+                "status": "fallback_triggered"
+            }
+            if status_code is not None:
+                details["status_code"] = status_code
             details["error"] = error_class
-        src.telemetry.log_event("llm_ranking", details)
-    
-    # 5. Diagnostic parsing and rate limit check
-    try:
-        res_data = response.json()
-    except Exception:
-        # Fallback if json response parser fails
-        raise ValueError(f"AI response was malformed and could not be parsed as JSON: {response.text}")
-        
-    if "error" in res_data:
-        error_msg = res_data["error"].get("message", "Unknown error")
-        if response.status_code == 429:
-            retry_after = response.headers.get("Retry-After")
-            if retry_after:
-                print(f"Rate limit hit. Retry-After: {retry_after} seconds.")
-        raise ValueError(f"OpenRouter API Error: {error_msg}")
-        
-    response.raise_for_status()
+            details["error_detail"] = str(e)[:200]
+            src.telemetry.log_event("llm_ranking", details)
+            
+            # Switch to next model in list
+            continue
 
-    # Extract JSON content from first choice
-    choices = res_data.get("choices", [])
-    if not choices:
-        raise ValueError(f"OpenRouter returned empty choices. Payload: {res_data}")
-        
-    content = choices[0].get("message", {}).get("content", "")
-    if not content:
-        raise ValueError(f"OpenRouter returned empty message content. Payload: {res_data}")
-
-    # Remove markdown codeblock qualifiers
-    content_clean = content.strip()
-    if content_clean.startswith("```json"):
-        content_clean = content_clean[7:]
-    if content_clean.startswith("```"):
-        content_clean = content_clean[3:]
-    if content_clean.endswith("```"):
-        content_clean = content_clean[:-3]
-    content_clean = content_clean.strip()
-
-    try:
-        parsed_json = json.loads(content_clean)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"AI response was malformed and could not be parsed as JSON: {e}")
-
-    top_articles = parsed_json.get("top_articles", [])
-    return top_articles
+    if last_exception:
+        raise last_exception
+    raise ValueError("All models in the OpenRouter fallback chain failed.")

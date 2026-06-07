@@ -84,7 +84,7 @@ def test_llm_success(sample_headlines):
         
         # Verify call parameters
         args, kwargs = mock_post.call_args
-        assert kwargs["timeout"] == 50
+        assert kwargs["timeout"] == 16
         assert "openrouter/owl-alpha" in kwargs["json"]["model"]
         assert kwargs["json"]["models"][0] == "openrouter/owl-alpha"
         assert kwargs["json"]["response_format"] == {"type": "json_object"}
@@ -318,4 +318,44 @@ def test_llm_budget_truncation():
         assert len(sent_prompt) < 20000
         # Check that the last article "art_299" is not in the prompt, indicating it was truncated
         assert "art_299" not in sent_prompt
+
+
+def test_llm_status_not_200_json_no_error(sample_headlines):
+    # GIVEN response status is 400, body is valid JSON but no 'error' key
+    mock_response = MagicMock()
+    mock_response.status_code = 400
+    mock_response.json.return_value = {"message": "Bad request"}
+    
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", return_value=mock_response):
+         
+        with pytest.raises(ValueError) as excinfo:
+            rank_headlines(sample_headlines, limit=5)
+        assert "HTTP 400" in str(excinfo.value)
+
+
+def test_llm_status_not_200_non_json(sample_headlines):
+    # GIVEN response status is 503, body is not JSON
+    mock_response = MagicMock()
+    mock_response.status_code = 503
+    mock_response.text = "Service Unavailable"
+    mock_response.json.side_effect = Exception("JSON error")
+    
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", return_value=mock_response):
+         
+        with pytest.raises(ValueError) as excinfo:
+            rank_headlines(sample_headlines, limit=5)
+        assert "AI response was malformed" in str(excinfo.value)
+
+
+def test_llm_empty_models_fallback_fail(sample_headlines):
+    # GIVEN MODELS_LIST is empty
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.MODELS_LIST", []):
+         
+        with pytest.raises(ValueError) as excinfo:
+            rank_headlines(sample_headlines, limit=5)
+        assert "All models in the OpenRouter fallback chain failed" in str(excinfo.value)
+
 

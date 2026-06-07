@@ -76,14 +76,15 @@ def test_unhandled_error_endpoint():
     raise RuntimeError("Simulated unhandled exception")
 
 def get_article_id_from_ref(ref: str) -> str:
-    # E.g., "GKLG1M8CQ.1+GO1G1NQTF.1.html" or "GKLG1M8CQ.1 GO1G1NQTF.1.html"
+    # E.g., "GKLG1M8CQ.1+GO1G1NQTF.1.html" or "GKLG1M8CQ.1 GO1G1NQTF.1.html" or "GO1G1NQTF.1.html"
+    part = ref
     for sep in ["+", " "]:
         if sep in ref:
             part = ref.split(sep)[1]
-            if part.endswith(".html"):
-                return part[:-5]
-            return part
-    return ref
+            break
+    if part.endswith(".html"):
+        return part[:-5]
+    return part
 
 @app.get("/api/headlines")
 def get_headlines_endpoint(

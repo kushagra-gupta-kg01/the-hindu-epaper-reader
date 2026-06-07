@@ -50,11 +50,14 @@ def rank_headlines(headlines_data: dict, limit: int) -> list:
             art_id = art.get("id")
             headline = art.get("headline", "")
             
-            # Remove control characters (non-printable, ascii < 32 except space)
-            safe_headline = "".join(ch for ch in headline if ch == " " or ord(ch) >= 32)
+            # Replace carriage returns, newlines, and tabs with spaces first to prevent word merging
+            cleaned_headline = headline.replace("\n", " ").replace("\r", " ").replace("\t", " ")
             
-            # Sanitize structural characters and strip newlines to block injection
-            safe_headline = safe_headline.replace("<", "[").replace(">", "]").replace("\n", " ").replace("\r", " ").replace("</", "[").replace("/>", "]").strip()
+            # Remove other control characters (non-printable, ascii < 32)
+            safe_headline = "".join(ch for ch in cleaned_headline if ord(ch) >= 32)
+            
+            # Sanitize structural characters to block injection
+            safe_headline = safe_headline.replace("<", "[").replace(">", "]").replace("</", "[").replace("/>", "]").strip()
             
             line = f"- ID: {art_id} | Page: {page_num} | Section: {page_name} | Headline: {safe_headline}"
             if current_char_count + len(line) + 1 > max_char_limit:

@@ -12,7 +12,7 @@ def test_fetch_catalog():
     mock_resp = MagicMock()
     mock_resp.text = "catalog text"
     mock_resp.status_code = 200
-    with patch("requests.get", return_value=mock_resp) as mock_get, \
+    with patch("src.scraper.session.get", return_value=mock_resp) as mock_get, \
          patch("src.telemetry.log_event") as mock_log:
         res = fetch_catalog("2026-05-28", "th_delhi")
         assert res == "catalog text"
@@ -28,7 +28,7 @@ def test_fetch_cciobjects():
     mock_resp = MagicMock()
     mock_resp.text = "cci text"
     mock_resp.status_code = 200
-    with patch("requests.get", return_value=mock_resp) as mock_get, \
+    with patch("src.scraper.session.get", return_value=mock_resp) as mock_get, \
          patch("src.telemetry.log_event") as mock_log:
         res = fetch_cciobjects("186654", "th_delhi")
         assert res == "cci text"
@@ -44,7 +44,7 @@ def test_fetch_article_html():
     mock_resp = MagicMock()
     mock_resp.text = "article html"
     mock_resp.status_code = 200
-    with patch("requests.get", return_value=mock_resp) as mock_get, \
+    with patch("src.scraper.session.get", return_value=mock_resp) as mock_get, \
          patch("src.telemetry.log_event") as mock_log:
         res = fetch_article_html("th_delhi", "186654", "ref.html")
         assert res == "article html"
@@ -55,4 +55,15 @@ def test_fetch_article_html():
         assert args[0] == "scraper_fetch_article_html"
         assert args[1]["status_code"] == 200
         assert "duration_ms" in args[1]
+
+def test_scraper_thread_local_session_proxy_coverage():
+    from src.scraper import ThreadLocalSessionProxy
+    proxy = ThreadLocalSessionProxy()
+    # Trigger instantiation
+    assert isinstance(proxy.session, requests.Session)
+    mock_session = MagicMock()
+    proxy._local.session = mock_session
+    
+    proxy.get("http://test")
+    mock_session.get.assert_called_once_with("http://test")
 

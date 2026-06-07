@@ -166,7 +166,7 @@ def test_get_article_utf8_decoding():
             
     mock_resp = MockRequestsResponse()
     
-    with patch("requests.get", return_value=mock_resp):
+    with patch("src.scraper.session.get", return_value=mock_resp):
         response = client.get("/api/article?city=th_delhi&issue_id=186654&ref=dummy.html")
         assert response.status_code == 200
         data = response.json()

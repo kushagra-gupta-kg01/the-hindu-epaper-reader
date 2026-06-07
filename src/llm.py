@@ -217,3 +217,190 @@ def rank_headlines(headlines_data: dict, limit: int) -> list:
     if last_exception:
         raise last_exception
     raise ValueError("All models in the OpenRouter fallback chain failed.")
+
+
+def summarize_article(headline: str, article_text: str, reason: str = None) -> list:
+    import src.telemetry
+    import time
+    import re
+    import logging
+
+    local_logger = logging.getLogger(__name__)
+
+    def get_local_summary():
+        bullets = [
+            f"Key Event: {headline.strip()}.",
+            "Refer to the main newspaper edition for full reporting on this story."
+        ]
+        if reason and reason.strip():
+            bullets.append(f"Editor's Focus: {reason.strip()}.")
+        else:
+            bullets.append("Select 'Read Full Article' to open the complete text overlay.")
+        bullets.append("Additional context and coverage details are available in the full-text reader.")
+        return bullets[:4]
+
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key or not api_key.strip():
+        local_logger.warning("OPENROUTER_API_KEY is not configured; returning local summary fallback.")
+        return get_local_summary()
+
+    # Sanitize prompt text against injection & structure
+    def sanitize(text: str, strip_newlines: bool = True) -> str:
+        if not text:
+            return ""
+        if strip_newlines:
+            cleaned = text.replace("\n", " ").replace("\r", " ").replace("\t", " ")
+        else:
+            cleaned = text.replace("\r", "").replace("\t", " ")
+        safe = "".join(ch for ch in cleaned if ord(ch) >= 32 or ch == "\n")
+        return safe.replace("<", "[").replace(">", "]").replace("</", "[").replace("/>", "]").strip()
+
+    safe_headline = sanitize(headline)
+    safe_body = sanitize(article_text, strip_newlines=False)
+    safe_reason = sanitize(reason) if reason else None
+
+    # Limit body size to avoid hitting context window limits
+    max_char_limit = 12000
+    if len(safe_body) > max_char_limit:
+        safe_body = safe_body[:max_char_limit] + "... [truncated]"
+
+    system_prompt = (
+        "You are an expert news editor. Summarize the provided news article into exactly 4 concise, high-impact bullet points. "
+        "Each bullet point must be a single complete sentence, summarizing a key facet of the story. "
+        "Do not include markdown list markers (like -, *, or •) or numbering in the output. "
+        "Return your response strictly as a JSON object matching this schema:\n"
+        "{\n"
+        "  \"summary\": [\n"
+        "    \"Bullet point 1 text.\",\n"
+        "    \"Bullet point 2 text.\",\n"
+        "    \"Bullet point 3 text.\",\n"
+        "    \"Bullet point 4 text.\"\n"
+        "  ]\n"
+        "}"
+    )
+
+    user_prompt = f"Headline: {safe_headline}\n\nArticle Content:\n{safe_body}"
+    if safe_reason:
+        user_prompt += f"\n\nEditor's Note (Focus Area/Selection Reason): {safe_reason}"
+
+    headers = {
+        "Authorization": f"Bearer {api_key.strip()}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/kushagra-gupta-kg01/the-hindu-epaper-reader",
+        "X-Title": "The Hindu ePaper Reader",
+    }
+
+    models_chain = [
+        "meta-llama/llama-3-8b-instruct:free",
+        "google/gemma-2-9b-it:free",
+        "z-ai/glm-4.5-air:free",
+    ]
+
+    last_exception = None
+
+    for model_name in models_chain:
+        payload = {
+            "model": model_name,
+            "models": [model_name],
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "response_format": {"type": "json_object"},
+        }
+
+        start_time = time.perf_counter()
+        response = None
+        error_class = None
+        status_code = None
+        try:
+            response = session.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=15
+            )
+            response.encoding = "utf-8"
+            status_code = response.status_code
+
+            if response.status_code != 200:
+                try:
+                    err_json = response.json()
+                    err_msg = err_json.get("error", {}).get("message", f"HTTP {response.status_code}")
+                except:
+                    err_msg = response.text or f"HTTP {response.status_code}"
+                raise ValueError(f"OpenRouter error: {err_msg}")
+
+            res_data = response.json()
+            choices = res_data.get("choices", [])
+            if not choices:
+                raise ValueError("Empty choices in response")
+
+            content = choices[0].get("message", {}).get("content", "")
+            if not content:
+                raise ValueError("Empty content in response message")
+
+            content_clean = content.strip()
+            if content_clean.startswith("```json"):
+                content_clean = content_clean[7:]
+            if content_clean.startswith("```"):
+                content_clean = content_clean[3:]
+            if content_clean.endswith("```"):
+                content_clean = content_clean[:-3]
+            content_clean = content_clean.strip()
+
+            parsed = json.loads(content_clean)
+            bullets = parsed.get("summary", [])
+            if not isinstance(bullets, list):
+                raise ValueError("Summary field is not a list")
+
+            # Clean and normalize bullets
+            cleaned_bullets = []
+            for b in bullets:
+                if not b:
+                    continue
+                # strip list markers if model added them
+                b_str = str(b).strip()
+                b_str = re.sub(r'^(\*|-|•|\d+\.)\s*', '', b_str)
+                if b_str:
+                    cleaned_bullets.append(b_str)
+
+            if not cleaned_bullets:
+                raise ValueError("No non-empty bullets found in response")
+
+            # Pad or truncate to exactly 4 bullets
+            while len(cleaned_bullets) < 4:
+                cleaned_bullets.append(cleaned_bullets[-1])
+            cleaned_bullets = cleaned_bullets[:4]
+
+            # Telemetry log
+            duration_ms = (time.perf_counter() - start_time) * 1000.0
+            src.telemetry.log_event("llm_summarize", {
+                "model": model_name,
+                "duration_ms": duration_ms,
+                "status_code": status_code,
+                "status": "success"
+            })
+            return cleaned_bullets
+
+        except Exception as e:
+            error_class = type(e).__name__
+            last_exception = e
+            duration_ms = (time.perf_counter() - start_time) * 1000.0
+
+            # Log failure details for this model
+            details = {
+                "model": model_name,
+                "duration_ms": duration_ms,
+                "status": "fallback_triggered"
+            }
+            if status_code is not None:
+                details["status_code"] = status_code
+            details["error"] = error_class
+            details["error_detail"] = str(e)[:200]
+            src.telemetry.log_event("llm_summarize", details)
+            continue
+
+    local_logger.warning(f"All summarization models failed: {last_exception}. Returning local summary fallback.")
+    return get_local_summary()
+

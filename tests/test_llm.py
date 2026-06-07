@@ -359,3 +359,344 @@ def test_llm_empty_models_fallback_fail(sample_headlines):
         assert "All models in the OpenRouter fallback chain failed" in str(excinfo.value)
 
 
+def test_summarize_article_success():
+    from src.llm import summarize_article
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.encoding = "utf-8"
+    
+    llm_payload = {
+        "summary": [
+            "Bullet point one.",
+            "Bullet point two.",
+            "Bullet point three.",
+            "Bullet point four."
+        ]
+    }
+    
+    mock_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps(llm_payload)
+                }
+            }
+        ]
+    }
+
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", return_value=mock_response) as mock_post:
+         
+        result = summarize_article("Test Headline", "Test body paragraphs.", reason="editor reason")
+        assert len(result) == 4
+        assert result == llm_payload["summary"]
+        assert mock_post.called
+        
+        # Verify it includes the reason in the prompt
+        args, kwargs = mock_post.call_args
+        sent_prompt = kwargs["json"]["messages"][1]["content"]
+        assert "editor reason" in sent_prompt
+        assert kwargs["timeout"] == 15
+
+
+def test_summarize_article_missing_api_key():
+    from src.llm import summarize_article
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": ""}, clear=True):
+        # Should fallback to local summary directly without erroring
+        result = summarize_article("Test Headline", "Test body.")
+        assert len(result) == 4
+        assert "Key Event: Test Headline." in result[0]
+
+
+def test_summarize_article_timeout_fallback():
+    from src.llm import summarize_article
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", side_effect=requests.RequestException("Timeout")):
+         
+        # Should fallback to local summary
+        result = summarize_article("Test Headline", "Test body.")
+        assert len(result) == 4
+        assert "Key Event: Test Headline." in result[0]
+        assert "Refer to the main newspaper edition" in result[1]
+
+
+def test_summarize_article_malformed_json_fallback():
+    from src.llm import summarize_article
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.encoding = "utf-8"
+    mock_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": "Not a JSON content"
+                }
+            }
+        ]
+    }
+    
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", return_value=mock_response):
+         
+        result = summarize_article("Test Headline", "Test body.")
+        assert len(result) == 4
+        assert "Key Event: Test Headline." in result[0]
+
+
+def test_summarize_article_invalid_length_padding():
+    from src.llm import summarize_article
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.encoding = "utf-8"
+    
+    # Returns only 2 bullet points
+    llm_payload = {
+        "summary": [
+            "Bullet point one.",
+            "Bullet point two."
+        ]
+    }
+    
+    mock_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps(llm_payload)
+                }
+            }
+        ]
+    }
+    
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", return_value=mock_response):
+         
+        result = summarize_article("Test Headline", "Test body.")
+        assert len(result) == 4
+        assert result[0] == "Bullet point one."
+        assert result[1] == "Bullet point two."
+        # Verify it padded to 4 elements
+        assert result[2] == "Bullet point two."
+        assert result[3] == "Bullet point two."
+
+
+def test_summarize_article_timeout_fallback_with_reason():
+    from src.llm import summarize_article
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", side_effect=requests.RequestException("Timeout")):
+         
+        result = summarize_article("Test Headline", "Test body.", reason="custom reason")
+        assert len(result) == 4
+        assert "Editor's Focus: custom reason." in result[2]
+
+
+def test_summarize_article_empty_inputs():
+    from src.llm import summarize_article
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", side_effect=requests.RequestException("Timeout")):
+         
+        result = summarize_article("", "", reason="")
+        assert len(result) == 4
+        assert "Key Event: ." in result[0]
+
+
+def test_summarize_article_truncation():
+    from src.llm import summarize_article
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.encoding = "utf-8"
+    llm_payload = {"summary": ["B1", "B2", "B3", "B4"]}
+    mock_response.json.return_value = {
+        "choices": [{"message": {"content": json.dumps(llm_payload)}}]
+    }
+    
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", return_value=mock_response) as mock_post:
+         
+        result = summarize_article("Test Headline", "A" * 13000)
+        assert len(result) == 4
+        args, kwargs = mock_post.call_args
+        sent_body = kwargs["json"]["messages"][1]["content"]
+        assert "... [truncated]" in sent_body
+
+
+def test_summarize_article_non_200_with_json_error():
+    from src.llm import summarize_article
+    mock_response = MagicMock()
+    mock_response.status_code = 400
+    mock_response.encoding = "utf-8"
+    mock_response.json.return_value = {"error": {"message": "invalid model name"}}
+    
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", return_value=mock_response):
+         
+        # Should fallback to local summary
+        result = summarize_article("Test Headline", "Test body.")
+        assert len(result) == 4
+        assert "Key Event: Test Headline." in result[0]
+
+
+def test_summarize_article_non_200_with_raw_text_error():
+    from src.llm import summarize_article
+    mock_response = MagicMock()
+    mock_response.status_code = 503
+    mock_response.encoding = "utf-8"
+    mock_response.text = "Service Overloaded"
+    mock_response.json.side_effect = Exception("Not JSON")
+    
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", return_value=mock_response):
+         
+        result = summarize_article("Test Headline", "Test body.")
+        assert len(result) == 4
+        assert "Key Event: Test Headline." in result[0]
+
+
+def test_summarize_article_empty_choices():
+    from src.llm import summarize_article
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.encoding = "utf-8"
+    mock_response.json.return_value = {"choices": []}
+    
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", return_value=mock_response):
+         
+        result = summarize_article("Test Headline", "Test body.")
+        assert len(result) == 4
+        assert "Key Event: Test Headline." in result[0]
+
+
+def test_summarize_article_empty_message_content():
+    from src.llm import summarize_article
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.encoding = "utf-8"
+    mock_response.json.return_value = {"choices": [{"message": {"content": ""}}]}
+    
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", return_value=mock_response):
+         
+        result = summarize_article("Test Headline", "Test body.")
+        assert len(result) == 4
+        assert "Key Event: Test Headline." in result[0]
+
+
+def test_summarize_article_json_codeblock_wrapper():
+    from src.llm import summarize_article
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.encoding = "utf-8"
+    mock_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": "```json\n{\n  \"summary\": [\"Point 1\", \"Point 2\", \"Point 3\", \"Point 4\"]\n}\n```"
+                }
+            }
+        ]
+    }
+    
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", return_value=mock_response):
+         
+        result = summarize_article("Test Headline", "Test body.")
+        assert result == ["Point 1", "Point 2", "Point 3", "Point 4"]
+
+
+def test_summarize_article_summary_field_not_list():
+    from src.llm import summarize_article
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.encoding = "utf-8"
+    mock_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": "{\"summary\": \"Not a list string\"}"
+                }
+            }
+        ]
+    }
+    
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", return_value=mock_response):
+         
+        result = summarize_article("Test Headline", "Test body.")
+        assert len(result) == 4
+        assert "Key Event: Test Headline." in result[0]
+
+
+def test_summarize_article_empty_bullets_in_list():
+    from src.llm import summarize_article
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.encoding = "utf-8"
+    mock_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": "{\"summary\": [\"\", null, \"Valid Bullet\", \"  \", \"Another Bullet\"]}"
+                }
+            }
+        ]
+    }
+    
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", return_value=mock_response):
+         
+        result = summarize_article("Test Headline", "Test body.")
+        assert len(result) == 4
+        assert result[0] == "Valid Bullet"
+        assert result[1] == "Another Bullet"
+        assert result[2] == "Another Bullet"
+        assert result[3] == "Another Bullet"
+
+
+def test_summarize_article_generic_codeblock_wrapper():
+    from src.llm import summarize_article
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.encoding = "utf-8"
+    mock_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": "```\n{\n  \"summary\": [\"Point A\", \"Point B\", \"Point C\", \"Point D\"]\n}\n```"
+                }
+            }
+        ]
+    }
+    
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", return_value=mock_response):
+         
+        result = summarize_article("Test Headline", "Test body.")
+        assert result == ["Point A", "Point B", "Point C", "Point D"]
+
+
+def test_summarize_article_no_valid_bullets():
+    from src.llm import summarize_article
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.encoding = "utf-8"
+    mock_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": "{\"summary\": [\"\", null, \"  \"]}"
+                }
+            }
+        ]
+    }
+    
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", return_value=mock_response):
+         
+        result = summarize_article("Test Headline", "Test body.")
+        assert len(result) == 4
+        assert "Key Event: Test Headline." in result[0]
+
+
+
+
+

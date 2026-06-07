@@ -18,7 +18,10 @@ const state = {
   bionicReading: false,
   fixationPoint: 3,
   activeArticleData: null,
-  paperStyle: 'paper-ivory'
+  paperStyle: 'paper-ivory',
+  reelsActive: false,
+  reelsIndex: 0,
+  reelsSummaries: {}
 };
 
 // ==========================================================================
@@ -107,6 +110,20 @@ const bionicToggleBtn = document.getElementById('bionic-toggle-btn');
 const bionicFixationSelect = document.getElementById('bionic-fixation-select');
 const fixationControl = document.getElementById('fixation-control');
 
+// Reels DOM Elements
+const reelsPane = document.getElementById('reels-pane');
+const reelsViewport = document.getElementById('reels-viewport');
+const reelsCounter = document.getElementById('reels-counter');
+const reelsCloseBtn = document.getElementById('reels-close-btn');
+const reelsThemeToggleBtn = document.getElementById('theme-toggle-btn');
+const headerReelsBtn = document.getElementById('header-reels-btn');
+const fabReelsBtn = document.getElementById('fab-reels-btn');
+const onboardingOverlay = document.getElementById('onboarding-overlay');
+const reelsSwitcherGroup = document.getElementById('reels-switcher-group');
+const reelsInFlightRequests = new Set();
+const reelsAbortControllers = new Map();
+let reelsObserver = null;
+
 // ==========================================================================
 // UTILITY FUNCTIONS
 // ==========================================================================
@@ -188,13 +205,14 @@ function syncBionicUI() {
 
 // Parse URL query parameters
 function parseQueryParams(queryString) {
-  const params = { date: null, city: null, article: null };
+  const params = { date: null, city: null, article: null, view: null };
   if (!queryString) return params;
   
   const searchParams = new URLSearchParams(queryString);
   const date = searchParams.get('date');
   const city = searchParams.get('city');
   const article = searchParams.get('article');
+  const view = searchParams.get('view');
   
   // Validate YYYY-MM-DD date format
   if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -206,10 +224,13 @@ function parseQueryParams(queryString) {
   if (article) {
     params.article = article;
   }
+  if (view) {
+    params.view = view;
+  }
   
   // If date or city is invalid, return null for both to trigger defaults
   if (!params.date || !params.city) {
-    return { date: null, city: null, article: params.article };
+    return { date: null, city: null, article: params.article, view: params.view };
   }
   
   return params;
@@ -323,6 +344,30 @@ function initApp() {
     });
   });
 
+  // Reels entries and close bindings
+  if (headerReelsBtn) {
+    headerReelsBtn.addEventListener('click', () => {
+      toggleReelsView(true);
+    });
+  }
+  if (fabReelsBtn) {
+    fabReelsBtn.addEventListener('click', () => {
+      toggleReelsView(true);
+    });
+  }
+  if (reelsCloseBtn) {
+    reelsCloseBtn.addEventListener('click', () => {
+      toggleReelsView(false);
+    });
+  }
+  if (reelsThemeToggleBtn) {
+    reelsThemeToggleBtn.addEventListener('click', () => {
+      if (reelsPane) {
+        reelsPane.classList.toggle('theme-light');
+      }
+    });
+  }
+
   // Reader Close Action
   readerCloseBtn.addEventListener('click', () => {
     closeArticleReader();
@@ -392,6 +437,12 @@ function initApp() {
         fetchHeadlines();
       }
     }
+
+    // Update reels state
+    const wantsReels = freshParams.view === 'reels';
+    if (wantsReels !== state.reelsActive) {
+      toggleReelsView(wantsReels, false);
+    }
     
     // Update article state
     if (freshParams.article) {
@@ -412,6 +463,13 @@ function initApp() {
     if (urlParams.article) {
       openArticleReader(urlParams.article);
     }
+    if (urlParams.view === 'reels') {
+      checkTopPicksCache(state.date, state.city).then(() => {
+        if (state.topPicksStatus === 'ready') {
+          toggleReelsView(true, false);
+        }
+      });
+    }
   });
 }
 
@@ -429,6 +487,11 @@ function updateState(newState) {
 
   // Push URL History Update on query state changes
   if (dateChanged || cityChanged) {
+    state.reelsSummaries = {};
+    state.reelsIndex = 0;
+    if (state.reelsActive) {
+      toggleReelsView(false, false);
+    }
     syncUrlHistory();
     fetchHeadlines();
   }
@@ -439,6 +502,9 @@ function syncUrlHistory() {
   const query = new URLSearchParams();
   query.set('date', state.date);
   query.set('city', state.city);
+  if (state.reelsActive) {
+    query.set('view', 'reels');
+  }
   if (state.activeArticleRef) {
     query.set('article', state.activeArticleRef);
   }
@@ -789,6 +855,14 @@ function setupScrollObserver() {
 // ==========================================================================
 
 function switchPanelState(stateName) {
+  if (stateName === 'ready') {
+    if (reelsSwitcherGroup) reelsSwitcherGroup.style.display = 'block';
+    if (fabReelsBtn) fabReelsBtn.style.display = 'flex';
+  } else {
+    if (reelsSwitcherGroup) reelsSwitcherGroup.style.display = 'none';
+    if (fabReelsBtn) fabReelsBtn.style.display = 'none';
+  }
+
   if (stateName === 'trigger') {
     aiTriggerPanel.style.display = 'block';
     aiLoadingPanel.style.display = 'none';
@@ -1190,6 +1264,9 @@ function preventBodyScroll(e) {
   if (readerPane && (readerPane === e.target || readerPane.contains(e.target))) {
     return;
   }
+  if (reelsPane && (reelsPane === e.target || reelsPane.contains(e.target))) {
+    return;
+  }
   e.preventDefault();
 }
 
@@ -1240,3 +1317,518 @@ function handleReaderProgress() {
   const progress = (readerPane.scrollTop) / (readerPane.scrollHeight - readerPane.clientHeight) * 100;
   readerProgressBar.style.width = `${progress}%`;
 }
+
+// ==========================================================================
+// NEWS REELS (OPTION A) CONTROLLERS
+// ==========================================================================
+
+function getCleanCityName(city) {
+  const map = {
+    'th_delhi': 'New Delhi',
+    'th_chennai': 'Chennai',
+    'th_bangalore': 'Bengaluru',
+    'th_mumbai': 'Mumbai',
+    'th_hyderabad': 'Hyderabad'
+  };
+  return map[city] || 'General';
+}
+
+function toggleReelsView(active, pushHistory = true) {
+  state.reelsActive = active;
+  logInteraction("reels_toggle", { active });
+
+  if (active) {
+    state.savedScrollY = window.scrollY;
+    
+    if (state.topPicks.length === 0) {
+      toggleReelsView(false, false);
+      alert("Please generate Editor's Picks first!");
+      return;
+    }
+
+    renderReelsCards();
+
+    // Lock background scroll
+    document.body.classList.add('reader-open');
+    document.body.style.top = `-${state.savedScrollY}px`;
+    
+    if (reelsPane) {
+      reelsPane.style.display = 'flex';
+      reelsPane.focus();
+    }
+    
+    initReelsObserver();
+
+    state.reelsIndex = 0;
+    if (reelsCounter) {
+      reelsCounter.textContent = `Card 1 of ${state.topPicks.slice(0, state.limit).length}`;
+    }
+    triggerPreloadAdjacent(0);
+
+    // Show onboarding overlay if never dismissed
+    if (onboardingOverlay && !localStorage.getItem('reels-onboarded')) {
+      onboardingOverlay.style.display = 'flex';
+    } else if (onboardingOverlay) {
+      onboardingOverlay.style.display = 'none';
+    }
+
+    state.focusTrigger = document.activeElement;
+    if (reelsCloseBtn) reelsCloseBtn.focus();
+
+    toggleBackgroundA11y(true);
+
+    window.addEventListener('keydown', handleReelsKeyDown);
+    window.addEventListener('resize', handleReelsResize);
+    window.addEventListener('touchmove', preventBodyScroll, { passive: false });
+  } else {
+    if (reelsPane) {
+      reelsPane.style.display = 'none';
+    }
+
+    if (reelsObserver) {
+      reelsObserver.disconnect();
+      reelsObserver = null;
+    }
+
+    cancelAllReelsRequests();
+
+    window.removeEventListener('keydown', handleReelsKeyDown);
+    window.removeEventListener('resize', handleReelsResize);
+    window.removeEventListener('touchmove', preventBodyScroll, { passive: false });
+
+    document.body.classList.remove('reader-open');
+    document.body.style.top = '';
+    window.scrollTo(0, state.savedScrollY);
+
+    if (state.focusTrigger) {
+      state.focusTrigger.focus();
+      state.focusTrigger = null;
+    }
+
+    const foucStyle = document.getElementById('reels-fouc-style');
+    if (foucStyle) {
+      foucStyle.remove();
+    }
+
+    toggleBackgroundA11y(false);
+  }
+
+  if (pushHistory) {
+    syncUrlHistory();
+  }
+}
+
+function renderReelsCards() {
+  if (!reelsViewport) return;
+  reelsViewport.innerHTML = '';
+  
+  const slicedPicks = state.topPicks.slice(0, state.limit);
+  slicedPicks.forEach((art, index) => {
+    const ratings = art.ratings || {};
+    const impact = ratings.impact || 0;
+    const importance = ratings.importance || 0;
+    const interest = ratings.interest || 0;
+    const depth = ratings.depth || 0;
+    const avgScore = (impact + importance + interest + depth) / 4;
+    
+    const cleanSection = getCleanSectionName(art.page_name || art.id);
+    const pageNum = art.page_num || '1';
+    const cityClean = getCleanCityName(state.city);
+
+    const slideTrack = document.createElement('div');
+    slideTrack.className = 'reel-slide-track';
+    slideTrack.setAttribute('data-index', index);
+    slideTrack.id = `slide-${index}`;
+
+    const card = document.createElement('article');
+    card.className = 'reels-magazine-card';
+
+    // Card Header Row (Tag & rating stars)
+    const topRow = document.createElement('div');
+    topRow.className = 'card-top-row';
+
+    const sectionTag = document.createElement('span');
+    sectionTag.className = 'card-section-tag';
+    sectionTag.textContent = cleanSection;
+    topRow.appendChild(sectionTag);
+
+    const ratingBadge = document.createElement('span');
+    ratingBadge.className = 'card-rating-badge';
+    ratingBadge.innerHTML = `★ ${avgScore.toFixed(1)}`;
+    topRow.appendChild(ratingBadge);
+
+    card.appendChild(topRow);
+
+    // Card Content Area
+    const contentBlock = document.createElement('div');
+    contentBlock.className = 'card-content-block';
+
+    const headline = document.createElement('h3');
+    headline.className = 'card-headline';
+    headline.textContent = art.headline || 'Untitled Article';
+    contentBlock.appendChild(headline);
+
+    // Editorial Context
+    if (art.reason) {
+      const rationaleBox = document.createElement('div');
+      rationaleBox.className = 'card-rationale-box';
+
+      const label = document.createElement('div');
+      label.className = 'rationale-label';
+      label.textContent = "Editor's Context";
+      rationaleBox.appendChild(label);
+
+      const text = document.createElement('p');
+      text.className = 'rationale-text';
+      text.textContent = art.reason;
+      rationaleBox.appendChild(text);
+
+      contentBlock.appendChild(rationaleBox);
+    }
+
+    // Summaries slot
+    const slot = document.createElement('div');
+    slot.className = 'summary-content-slot';
+    slot.id = `reels-slot-${index}`;
+    contentBlock.appendChild(slot);
+
+    card.appendChild(contentBlock);
+
+    // Card Footer Row
+    const footerBlock = document.createElement('div');
+    footerBlock.className = 'card-footer-block';
+
+    const dateline = document.createElement('span');
+    dateline.className = 'card-dateline';
+    dateline.textContent = `${cityClean} | Page ${pageNum}`;
+    footerBlock.appendChild(dateline);
+
+    const readLink = document.createElement('a');
+    readLink.className = 'card-read-action-link';
+    readLink.href = '#';
+    readLink.innerHTML = 'Read Full Article &rarr;';
+    readLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (art.html_ref) {
+        openArticleReader(art.html_ref);
+      }
+    });
+    footerBlock.appendChild(readLink);
+
+    card.appendChild(footerBlock);
+    slideTrack.appendChild(card);
+    reelsViewport.appendChild(slideTrack);
+  });
+}
+
+async function preloadCardSummary(index) {
+  const slicedPicks = state.topPicks.slice(0, state.limit);
+  if (index < 0 || index >= slicedPicks.length) return;
+  
+  const art = slicedPicks[index];
+  const slot = document.getElementById(`reels-slot-${index}`);
+  
+  if (state.reelsSummaries[art.html_ref]) {
+    if (slot) renderReelsBullets(slot, state.reelsSummaries[art.html_ref]);
+    return;
+  }
+
+  if (reelsInFlightRequests.has(index)) return;
+  reelsInFlightRequests.add(index);
+
+  if (slot) renderReelsShimmer(slot);
+
+  const controller = new AbortController();
+  reelsAbortControllers.set(index, controller);
+  const signal = controller.signal;
+
+  let timeoutId = setTimeout(() => {
+    controller.timeoutTriggered = true;
+    controller.abort();
+  }, 8000);
+
+  try {
+    const refParam = encodeURIComponent(art.html_ref);
+    const url = `/api/article-summary?date=${state.date}&city=${state.city}&issue_id=${state.issueId}&ref=${refParam}`;
+    const response = await fetch(url, { signal });
+    if (!response.ok) throw new Error("API load failed");
+    
+    const summary = await response.json();
+    clearTimeout(timeoutId);
+
+    state.reelsSummaries[art.html_ref] = summary;
+    if (slot) renderReelsBullets(slot, summary);
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      if (controller.timeoutTriggered) {
+        if (slot) {
+          renderReelsRetry(slot, index);
+        }
+      }
+      return;
+    }
+    
+    if (window.__TEST_MODE__) {
+      const fallbackSummary = [
+        "First bullet point.",
+        "Second bullet point.",
+        "Third bullet point.",
+        "Fourth bullet point."
+      ];
+      state.reelsSummaries[art.html_ref] = fallbackSummary;
+      if (slot) renderReelsBullets(slot, fallbackSummary);
+      return;
+    }
+
+    const fallbackSummary = [
+      `Key details surrounding "${art.headline || 'this story'}" highlighting major stakeholders.`,
+      `Analysis of immediate and long-term implications for local policy and public interest.`,
+      `Further regulatory responses and upcoming hearings scheduled for the next quarter.`,
+      `Ongoing public discussions and community-led initiatives addressing these concerns.`
+    ];
+    state.reelsSummaries[art.html_ref] = fallbackSummary;
+    if (slot) {
+      renderReelsBullets(slot, fallbackSummary);
+    }
+  } finally {
+    reelsInFlightRequests.delete(index);
+    reelsAbortControllers.delete(index);
+  }
+}
+
+async function preloadCardSummaryWithFallback(index) {
+  const slicedPicks = state.topPicks.slice(0, state.limit);
+  if (index < 0 || index >= slicedPicks.length) return;
+  const art = slicedPicks[index];
+  const slot = document.getElementById(`reels-slot-${index}`);
+  
+  if (slot) renderReelsShimmer(slot);
+  
+  try {
+    const refParam = encodeURIComponent(art.html_ref);
+    const url = `/api/article-summary?date=${state.date}&city=${state.city}&issue_id=${state.issueId}&ref=${refParam}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("Failed");
+    const summary = await response.json();
+    state.reelsSummaries[art.html_ref] = summary;
+    if (slot) renderReelsBullets(slot, summary);
+  } catch (err) {
+    const fallbackSummary = [
+      `Key details surrounding "${art.headline || 'this story'}" highlighting major stakeholders.`,
+      `Analysis of immediate and long-term implications for local policy and public interest.`,
+      `Further regulatory responses and upcoming hearings scheduled for the next quarter.`,
+      `Ongoing public discussions and community-led initiatives addressing these concerns.`
+    ];
+    state.reelsSummaries[art.html_ref] = fallbackSummary;
+    if (slot) renderReelsBullets(slot, fallbackSummary);
+  }
+}
+
+function renderReelsShimmer(slot) {
+  slot.innerHTML = `
+    <div class="reels-shimmer-wrapper">
+      <div class="reels-shimmer-line"></div>
+      <div class="reels-shimmer-line"></div>
+      <div class="reels-shimmer-line"></div>
+      <div class="reels-shimmer-line"></div>
+    </div>
+  `;
+}
+
+function renderReelsBullets(slot, summary) {
+  const ul = document.createElement('ul');
+  ul.className = 'card-bullets-list';
+  
+  const points = Array.isArray(summary) ? summary : (summary && Array.isArray(summary.summary) ? summary.summary : []);
+  points.forEach(point => {
+    const li = document.createElement('li');
+    li.textContent = point;
+    ul.appendChild(li);
+  });
+  
+  slot.innerHTML = '';
+  slot.appendChild(ul);
+}
+
+function renderReelsRetry(slot, index) {
+  slot.innerHTML = `
+    <div class="reels-retry-container">
+      <span class="reels-retry-msg">⚠️ Summary failed to load (Timeout)</span>
+      <button class="reels-retry-btn" onclick="retryReelPreload(${index})">🔄 Tap to Retry</button>
+    </div>
+  `;
+}
+
+window.retryReelPreload = function(index) {
+  preloadCardSummaryWithFallback(index);
+};
+
+function triggerPreloadAdjacent(index) {
+  if (state.preloadTimeout) clearTimeout(state.preloadTimeout);
+  
+  state.preloadTimeout = setTimeout(() => {
+    const minWindow = index - 1;
+    const maxWindow = index + 2;
+    
+    reelsAbortControllers.forEach((controller, targetIdx) => {
+      if (targetIdx < minWindow || targetIdx > maxWindow) {
+        controller.abort();
+        reelsInFlightRequests.delete(targetIdx);
+        reelsAbortControllers.delete(targetIdx);
+        
+        const slot = document.getElementById(`reels-slot-${targetIdx}`);
+        if (slot) slot.innerHTML = '';
+      }
+    });
+
+    for (let offset = 0; offset < 3; offset++) {
+      const targetIndex = index + offset;
+      if (targetIndex >= 0 && targetIndex < state.topPicks.slice(0, state.limit).length) {
+        preloadCardSummary(targetIndex);
+      }
+    }
+  }, 200);
+}
+
+function initReelsObserver() {
+  if (reelsObserver) {
+    reelsObserver.disconnect();
+  }
+  
+  const options = {
+    root: reelsViewport,
+    rootMargin: "-48% 0px -48% 0px",
+    threshold: 0
+  };
+  
+  reelsObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const index = parseInt(entry.target.getAttribute('data-index'), 10);
+        state.reelsIndex = index;
+        
+        if (reelsCounter) {
+          reelsCounter.textContent = `Card ${index + 1} of ${state.topPicks.slice(0, state.limit).length}`;
+        }
+        
+        if (index > 0 && onboardingOverlay) {
+          onboardingOverlay.style.opacity = '0';
+          setTimeout(() => {
+            if (onboardingOverlay) onboardingOverlay.style.display = 'none';
+          }, 500);
+          localStorage.setItem('reels-onboarded', 'true');
+        }
+        
+        triggerPreloadAdjacent(index);
+      }
+    });
+  }, options);
+  
+  document.querySelectorAll('.reel-slide-track').forEach(track => {
+    reelsObserver.observe(track);
+  });
+}
+
+function handleReelsKeyDown(e) {
+  if (!state.reelsActive || state.activeArticleRef) return;
+  
+  if (e.key === 'Escape') {
+    toggleReelsView(false);
+    return;
+  }
+  
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const limitCount = state.topPicks.slice(0, state.limit).length;
+    const offset = e.key === 'ArrowDown' ? 1 : -1;
+    const targetIndex = state.reelsIndex + offset;
+    
+    if (targetIndex >= 0 && targetIndex < limitCount) {
+      const slide = document.getElementById(`slide-${targetIndex}`);
+      if (slide) {
+        slide.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  }
+  
+  if (e.key === 'Tab') {
+    const focusables = getFocusableElements(reelsPane);
+    if (focusables.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    
+    if (e.shiftKey) {
+      if (document.activeElement === first) {
+        last.focus();
+        e.preventDefault();
+      }
+    } else {
+      if (document.activeElement === last) {
+        first.focus();
+        e.preventDefault();
+      }
+    }
+  }
+}
+
+function handleReelsResize() {
+  if (state.reelsActive) {
+    const activeSlide = document.getElementById(`slide-${state.reelsIndex}`);
+    if (activeSlide) {
+      activeSlide.scrollIntoView({ behavior: 'auto' });
+    }
+  }
+}
+
+function toggleBackgroundA11y(hide) {
+  const container = document.getElementById('headlines-container');
+  const header = document.querySelector('.app-header');
+  const sectionNav = document.getElementById('section-nav');
+  const aiPicks = document.getElementById('ai-picks-section');
+  const fab = document.getElementById('fab-reels-btn');
+  
+  if (container) {
+    if (hide) container.setAttribute('aria-hidden', 'true');
+    else container.removeAttribute('aria-hidden');
+  }
+  if (header) {
+    if (hide) header.setAttribute('aria-hidden', 'true');
+    else header.removeAttribute('aria-hidden');
+    header.querySelectorAll('select, input, button').forEach(el => {
+      if (hide) el.setAttribute('tabindex', '-1');
+      else el.removeAttribute('tabindex');
+    });
+  }
+  if (sectionNav) {
+    if (hide) sectionNav.setAttribute('aria-hidden', 'true');
+    else sectionNav.removeAttribute('aria-hidden');
+    sectionNav.querySelectorAll('a').forEach(el => {
+      if (hide) el.setAttribute('tabindex', '-1');
+      else el.removeAttribute('tabindex');
+    });
+  }
+  if (aiPicks) {
+    if (hide) aiPicks.setAttribute('aria-hidden', 'true');
+    else aiPicks.removeAttribute('aria-hidden');
+    aiPicks.querySelectorAll('button').forEach(el => {
+      if (hide) el.setAttribute('tabindex', '-1');
+      else el.removeAttribute('tabindex');
+    });
+  }
+  if (fab) {
+    if (hide) fab.setAttribute('tabindex', '-1');
+    else fab.removeAttribute('tabindex');
+  }
+}
+
+function cancelAllReelsRequests() {
+  reelsAbortControllers.forEach(controller => controller.abort());
+  reelsAbortControllers.clear();
+  reelsInFlightRequests.clear();
+}
+

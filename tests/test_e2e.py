@@ -247,3 +247,49 @@ def test_e2e_top_headlines_limitless_caching():
         cache.clear(date, city)
 
 
+@pytest.mark.e2e
+def test_e2e_article_summary():
+    import os
+    from fastapi.testclient import TestClient
+    from api.index import app
+    from src import cache as src_cache
+
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key or not api_key.strip():
+        pytest.skip("OPENROUTER_API_KEY not configured. Skipping live OpenRouter E2E test.")
+
+    client = TestClient(app)
+    date = "2026-05-28"
+    city = "th_delhi"
+    issue_id = "186654"
+    ref = "GKLG1M8CQ.1+GO1G1NQTF.1.html"
+
+    # Pre-clean summary cache
+    article_id = "GO1G1NQTF.1"
+    # Create summaries dir locally if needed
+    local_path = src_cache.get_summary_filepath(date, city, article_id)
+    if os.path.exists(local_path):
+        try:
+            os.remove(local_path)
+        except:
+            pass
+
+    try:
+        response = client.get(f"/api/article-summary?date={date}&city={city}&issue_id={issue_id}&ref={ref}&reason=test reason")
+        assert response.status_code == 200
+        assert response.headers["Cache-Control"] == "public, max-age=31536000, immutable"
+
+        data = response.json()
+        assert "summary" in data
+        assert len(data["summary"]) == 4
+        for point in data["summary"]:
+            assert isinstance(point, str)
+            assert len(point.strip()) > 0
+    finally:
+        if os.path.exists(local_path):
+            try:
+                os.remove(local_path)
+            except:
+                pass
+
+

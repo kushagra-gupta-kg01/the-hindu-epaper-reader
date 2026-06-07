@@ -76,10 +76,10 @@
   });
 
   test("parseQueryParams handles URL parsing and formats validation properly", function() {
-    assertDeepEqual(parseQueryParams("?date=2026-05-28&city=th_delhi"), {date: "2026-05-28", city: "th_delhi", article: null});
-    assertDeepEqual(parseQueryParams("?city=th_delhi&date=2026-05-28"), {date: "2026-05-28", city: "th_delhi", article: null});
-    assertDeepEqual(parseQueryParams("?date=invalid-date&city=th_delhi"), {date: null, city: null, article: null});
-    assertDeepEqual(parseQueryParams(""), {date: null, city: null, article: null});
+    assertDeepEqual(parseQueryParams("?date=2026-05-28&city=th_delhi"), {date: "2026-05-28", city: "th_delhi", article: null, view: null});
+    assertDeepEqual(parseQueryParams("?city=th_delhi&date=2026-05-28"), {date: "2026-05-28", city: "th_delhi", article: null, view: null});
+    assertDeepEqual(parseQueryParams("?date=invalid-date&city=th_delhi"), {date: null, city: null, article: null, view: null});
+    assertDeepEqual(parseQueryParams(""), {date: null, city: null, article: null, view: null});
   });
 
   test("Show Puzzles & Promos checkbox is removed from the DOM", function() {
@@ -584,6 +584,83 @@
     global.Sentry = originalSentry;
     if (typeof window !== 'undefined') window.Sentry = originalSentry;
     console.log = originalConsoleLog;
+  });
+
+  // ==========================================================================
+  // NEWS REELS (OPTION A) TDD TESTS
+  // ==========================================================================
+
+  // Test Case 1: State Variables Initialization
+  test("state object initializes reelsActive, reelsIndex, and reelsSummaries correctly", function() {
+    assertEqual(state.reelsActive, false, "state.reelsActive should initialize to false");
+    assertEqual(state.reelsIndex, 0, "state.reelsIndex should initialize to 0");
+    assertDeepEqual(state.reelsSummaries, {}, "state.reelsSummaries should initialize to empty dictionary");
+  });
+
+  // Test Case 2: Presence of Reels DOM Overlay elements
+  test("reels overlay structural elements exist in the DOM", function() {
+    const reelsPane = document.getElementById('reels-pane');
+    const reelsViewport = document.getElementById('reels-viewport');
+    const reelsCounter = document.getElementById('reels-counter');
+    const reelsCloseBtn = document.getElementById('reels-close-btn');
+    const onboardingOverlay = document.getElementById('onboarding-overlay');
+
+    assert(reelsPane !== null, "reels-pane overlay container must exist in DOM");
+    assert(reelsViewport !== null, "reels-viewport scroll snapped track must exist in DOM");
+    assert(reelsCounter !== null, "reels-counter state tracker must exist in DOM");
+    assert(reelsCloseBtn !== null, "reels-close-btn dismiss control must exist in DOM");
+    assert(onboardingOverlay !== null, "onboarding-overlay nudge view must exist in DOM");
+  });
+
+  // Test Case 3: Toggle view states updates state and element display properties
+  test("toggleReelsView correctly updates state, toggles element displays, and syncs history state", function() {
+    const originalActive = state.reelsActive;
+    const originalPicks = state.topPicks;
+    state.topPicks = [{ id: "ART.1", headline: "First Pick", html_ref: "ref1.html", reason: "Reason one.", ratings: { impact: 9, importance: 8, interest: 7, depth: 8 } }];
+    const reelsPane = document.getElementById('reels-pane');
+    
+    toggleReelsView(true);
+    assertEqual(state.reelsActive, true, "state.reelsActive should be true");
+    assertEqual(reelsPane.style.display, 'flex', "reels-pane style.display should be flex");
+
+    toggleReelsView(false);
+    assertEqual(state.reelsActive, false, "state.reelsActive should be false");
+    assertEqual(reelsPane.style.display, 'none', "reels-pane style.display should be none");
+
+    state.reelsActive = originalActive;
+    state.topPicks = originalPicks;
+  });
+
+  // Test Case 4: preloading sliding window requests adjacent items
+  test("triggerPreloadAdjacent calls summary preloading for sliding window size 3", async function() {
+    const originalFetch = global.fetch;
+    const originalSummaries = state.reelsSummaries;
+    state.reelsSummaries = {};
+    
+    const requestedUrls = [];
+    global.fetch = async function(url) {
+      requestedUrls.push(url);
+      return {
+        ok: true,
+        json: async () => ["Point 1", "Point 2", "Point 3"]
+      };
+    };
+    
+    state.topPicks = [
+      { html_ref: "a.html" },
+      { html_ref: "b.html" },
+      { html_ref: "c.html" },
+      { html_ref: "d.html" }
+    ];
+    
+    await preloadCardSummary(0);
+    await preloadCardSummary(1);
+    await preloadCardSummary(2);
+    
+    assertEqual(requestedUrls.length, 3, "Should trigger preloading for indices 0, 1, 2");
+    
+    global.fetch = originalFetch;
+    state.reelsSummaries = originalSummaries;
   });
 
   // ==========================================================================

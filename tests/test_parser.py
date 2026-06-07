@@ -269,4 +269,43 @@ def test_noise_article_news_in_numbers_no_underscores():
     assert _is_noise_article("news in numbers 123") is True
 
 
+def test_get_article_text_block_fallbacks():
+    from src.parser import get_article_text_block
+    
+    # Case 1: body exists
+    art_body = {
+        "headline": "Head",
+        "highlights": ["High1"],
+        "body": ["Body1", "Body2"]
+    }
+    assert get_article_text_block(art_body) == "Body1\nBody2"
+    
+    # Case 2: body is empty, highlights exist
+    art_high = {
+        "headline": "Head",
+        "highlights": ["High1", "High2"],
+        "body": []
+    }
+    assert get_article_text_block(art_high) == "High1\nHigh2"
+    
+    # Case 3: body and highlights empty, headline exists
+    art_head = {
+        "headline": "Head Text",
+        "highlights": [],
+        "body": []
+    }
+    assert get_article_text_block(art_head) == "Head Text"
+    
+    # Case 4: everything is empty or missing
+    art_empty = {
+        "headline": "",
+        "highlights": [],
+        "body": []
+    }
+    with pytest.raises(ValueError) as excinfo:
+        get_article_text_block(art_empty)
+    assert "No article content available" in str(excinfo.value)
+
+
+
 

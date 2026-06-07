@@ -212,3 +212,18 @@ def parse_article(html_content: str, article_id: str) -> dict:
         "body": body_paragraphs,
         "highlights": highlights
     }
+
+
+def get_article_text_block(article_data: dict) -> str:
+    """
+    Get the text content block from parsed article data, falling back from body to highlights, then to headline.
+    Raises ValueError if all are empty/missing.
+    """
+    if article_data.get("body"):
+        return "\n".join(article_data["body"])
+    if article_data.get("highlights"):
+        return "\n".join(article_data["highlights"])
+    if article_data.get("headline"):
+        return article_data["headline"]
+    raise ValueError("No article content available")
+

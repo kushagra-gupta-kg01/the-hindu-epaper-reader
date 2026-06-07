@@ -8,7 +8,7 @@
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&family=Playfair+Display:ital,wght@0,700;0,900;1,600&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300&family=Outfit:wght@400;500;600&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&family=Playfair+Display:ital,wght@0,600;0,700;0,900;1,600&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300&family=Outfit:wght@400;500;600;700;800&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
   
   <!-- Inlined FOUC Prevention Script -->
   <script>
@@ -27,6 +27,18 @@
         if (savedBionic === 'true') {
           document.documentElement.classList.add('bionic-active');
         }
+      }
+
+      // Reels FOUC Prevention
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('view') === 'reels') {
+        const style = document.createElement('style');
+        style.id = 'reels-fouc-style';
+        style.innerHTML = `
+          #reels-pane { display: flex !important; }
+          .app-header, .ai-picks-section, .headlines-container, #section-nav { display: none !important; }
+        `;
+        document.head.appendChild(style);
       }
     })();
   </script>
@@ -100,6 +112,14 @@
             <button class="theme-btn" data-theme="theme-folio" title="The Folio (Kindle E-Ink)">Folio</button>
             <button class="theme-btn" data-theme="theme-dispatch" title="The Dispatch (Substack)">Dispatch</button>
             <button class="theme-btn" data-theme="theme-gutenberg" title="Gutenberg (Premium Readability)">Gutenberg</button>
+          </div>
+        </div>
+        
+        <!-- View Mode Selector -->
+        <div class="control-group" id="reels-switcher-group" style="display: none;">
+          <label>View Mode</label>
+          <div class="theme-switcher">
+            <button id="header-reels-btn" class="theme-btn" title="Open News Reels Mode">✨ Reels</button>
           </div>
         </div>
       </div>
@@ -249,6 +269,32 @@
       </article>
     </div>
   </div>
+  
+  <!-- FIXED OVERLAY PANEL -->
+  <div id="reels-pane" class="reels-pane" role="dialog" aria-modal="true" aria-label="News Reels Viewer" style="display: none;">
+    <!-- Header Navigation -->
+    <header class="reels-header">
+      <button id="reels-close-btn" class="reels-exit-btn" aria-label="Exit Reels view">&larr;</button>
+      <span class="reels-tracker-badge" id="reels-counter">Card 1 of N</span>
+      <button id="theme-toggle-btn" class="theme-toggle-mock" title="Toggle light/dark theme">🌓</button>
+    </header>
+
+    <!-- Snapping vertical slider container -->
+    <div id="reels-viewport" class="reels-snap-viewport">
+      <!-- Slides are dynamically loaded and rendered here -->
+    </div>
+
+    <!-- Onboarding gesture overlay indicator -->
+    <div id="onboarding-overlay" class="onboard-nudge-overlay" style="display: none;">
+      <span class="nudge-arrow">▲</span>
+      <span>Swipe Up</span>
+    </div>
+  </div>
+
+  <!-- Floating Action Button for Mobile Reels Mode -->
+  <button id="fab-reels-btn" class="reels-fab" aria-label="Open News Reels Mode" style="display: none;">
+    ✨ Reels
+  </button>
 
   <script src="vendor/text-vide.js"></script>
   <script src="app.js"></script>

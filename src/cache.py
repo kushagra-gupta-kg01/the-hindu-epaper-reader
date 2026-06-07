@@ -360,3 +360,125 @@ def clear_top(date: str, city: str):
             os.remove(path)
         except:
             pass
+
+
+def get_summary_filepath(date: str, city: str, article_id: str) -> str:
+    return os.path.join(CACHE_DIR, "summaries", date, city, f"{article_id}.json")
+
+
+def get_summary_blob_url(date: str, city: str, article_id: str) -> str:
+    return f"{BLOB_STORE_URL}/summaries/{date}/{city}/{article_id}.json"
+
+
+def read_summary(date: str, city: str, article_id: str) -> dict:
+    import src.telemetry
+    import time
+    
+    start_time = time.perf_counter()
+    status = "miss"
+    location = "blob" if BLOB_STORE_URL else "local"
+    error_class = None
+    result = {}
+    
+    try:
+        if BLOB_STORE_URL:
+            url = get_summary_blob_url(date, city, article_id)
+            try:
+                resp = session.get(url, timeout=3.0)
+                if resp.status_code == 200:
+                    result = resp.json()
+                    status = "hit"
+            except Exception as e:
+                error_class = type(e).__name__
+                logger.warning(f"Error reading summary cache from Vercel Blob: {e}")
+        else:
+            path = get_summary_filepath(date, city, article_id)
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        result = json.load(f)
+                        status = "hit"
+                except Exception as e:
+                    error_class = type(e).__name__
+    finally:
+        duration_ms = (time.perf_counter() - start_time) * 1000.0
+        details = {
+            "date": date,
+            "city": city,
+            "article_id": article_id,
+            "status": status,
+            "location": location,
+            "duration_ms": duration_ms
+        }
+        if error_class:
+            details["error"] = error_class
+        src.telemetry.log_event("cache_read_summary", details)
+        
+    return result
+
+
+def write_summary(date: str, city: str, article_id: str, data: dict) -> bool:
+    import src.telemetry
+    import time
+    
+    start_time = time.perf_counter()
+    status = "failure"
+    location = "blob" if BLOB_STORE_URL else "local"
+    error_class = None
+    success = False
+    
+    try:
+        if BLOB_STORE_URL:
+            if not BLOB_READ_WRITE_TOKEN:
+                logger.warning("BLOB_READ_WRITE_TOKEN is not set; cannot write summary to Vercel Blob.")
+                return False
+            
+            url = f"https://blob.vercel-storage.com/summaries/{date}/{city}/{article_id}.json"
+            headers = {
+                "Authorization": f"Bearer {BLOB_READ_WRITE_TOKEN}",
+                "x-api-version": "1",
+                "x-add-random-suffix": "0",
+                "Content-Type": "application/json"
+            }
+            try:
+                resp = session.put(url, headers=headers, data=json.dumps(data, indent=2), timeout=3.0)
+                resp.raise_for_status()
+                success = True
+                status = "success"
+            except Exception as e:
+                error_class = type(e).__name__
+                logger.warning(f"Error writing summary cache to Vercel Blob: {e}")
+        else:
+            path = get_summary_filepath(date, city, article_id)
+            directory = os.path.dirname(path)
+            temp_path = f"{path}.tmp.{uuid.uuid4()}"
+            try:
+                os.makedirs(directory, exist_ok=True)
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+                os.replace(temp_path, path)
+                success = True
+                status = "success"
+            except Exception as e:
+                error_class = type(e).__name__
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except:
+                        pass
+    finally:
+        duration_ms = (time.perf_counter() - start_time) * 1000.0
+        details = {
+            "date": date,
+            "city": city,
+            "article_id": article_id,
+            "status": status,
+            "location": location,
+            "duration_ms": duration_ms
+        }
+        if error_class:
+            details["error"] = error_class
+        src.telemetry.log_event("cache_write_summary", details)
+        
+    return success
+

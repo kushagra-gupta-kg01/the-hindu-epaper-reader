@@ -122,11 +122,20 @@ function createMockElement(id = '') {
       }
     },
     style: {},
+    focus: function() {
+      global.document.activeElement = this;
+    },
     getAttribute: function(name) {
       return this[name] || '';
     },
     setAttribute: function(name, val) {
       this[name] = val;
+    },
+    removeAttribute: function(name) {
+      delete this[name];
+    },
+    querySelectorAll: function(selector) {
+      return [];
     },
     addEventListener: function(event, handler) {
       if (!this.listeners) this.listeners = {};
@@ -154,6 +163,41 @@ function createMockElement(id = '') {
       replaceChild: function(newChild, oldChild) {
         // No-op
       }
+    },
+    querySelector: function(selector) {
+      if (selector.startsWith('.')) {
+        const className = selector.substring(1);
+        const findChild = (el) => {
+          if (el.className && el.className.split(' ').includes(className)) {
+            return el;
+          }
+          if (el.children) {
+            for (const child of el.children) {
+              const found = findChild(child);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        return findChild(this);
+      }
+      if (selector.startsWith('#')) {
+        const idName = selector.substring(1);
+        const findChild = (el) => {
+          if (el.id === idName) {
+            return el;
+          }
+          if (el.children) {
+            for (const child of el.children) {
+              const found = findChild(child);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        return findChild(this);
+      }
+      return null;
     }
   };
   return elObj;
@@ -208,6 +252,25 @@ global.document = {
   body: getMockElement('body'),
   documentElement: getMockElement('html'),
   activeElement: null,
+  querySelector: (selector) => {
+    if (selector.startsWith('#')) {
+      return global.document.getElementById(selector.substring(1));
+    }
+    if (selector.startsWith('.')) {
+      const className = selector.substring(1);
+      for (const id in elementCache) {
+        const el = elementCache[id];
+        if (el.className && el.className.split(' ').includes(className)) {
+          return el;
+        }
+      }
+      const mockId = 'mock-' + className;
+      const el = getMockElement(mockId);
+      el.className = className;
+      return el;
+    }
+    return null;
+  },
   getElementById: (id) => {
     if (id === 'test-results') {
       return {

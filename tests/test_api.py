@@ -721,6 +721,146 @@ def test_top_headlines_ratings_handling():
         }
 
 
+def test_article_summary_validation():
+    # 1. Missing date
+    response = client.get("/api/article-summary?city=th_delhi&issue_id=186654&ref=dummy.html")
+    assert response.status_code == 422
+
+    # 2. Missing city
+    response = client.get("/api/article-summary?date=2026-06-07&issue_id=186654&ref=dummy.html")
+    assert response.status_code == 422
+
+    # 3. Missing issue_id
+    response = client.get("/api/article-summary?date=2026-06-07&city=th_delhi&ref=dummy.html")
+    assert response.status_code == 422
+
+    # 4. Missing ref
+    response = client.get("/api/article-summary?date=2026-06-07&city=th_delhi&issue_id=186654")
+    assert response.status_code == 422
+
+    # 5. Invalid date format
+    response = client.get("/api/article-summary?date=28-05-2026&city=th_delhi&issue_id=186654&ref=dummy.html")
+    assert response.status_code == 422
+
+    # 6. Invalid city format
+    response = client.get("/api/article-summary?date=2026-06-07&city=invalid-city&issue_id=186654&ref=dummy.html")
+    assert response.status_code == 422
+    assert "no-store" in response.headers["Cache-Control"]
+
+    # 7. Invalid issue_id format (must be digits)
+    response = client.get("/api/article-summary?date=2026-06-07&city=th_delhi&issue_id=abc&ref=dummy.html")
+    assert response.status_code == 422
+
+    # 8. Path traversal attempt on ref
+    response = client.get("/api/article-summary?date=2026-06-07&city=th_delhi&issue_id=186654&ref=../escape.html")
+    assert response.status_code == 422
+
+    # 9. Invalid ref format (no .html)
+    response = client.get("/api/article-summary?date=2026-06-07&city=th_delhi&issue_id=186654&ref=dummy")
+    assert response.status_code == 422
+
+    # 10. Reason too long (> 250 characters)
+    long_reason = "a" * 251
+    response = client.get(f"/api/article-summary?date=2026-06-07&city=th_delhi&issue_id=186654&ref=dummy.html&reason={long_reason}")
+    assert response.status_code == 422
+
+
+def test_article_summary_cache_hit():
+    mock_summary = {"summary": ["Bullet 1", "Bullet 2", "Bullet 3", "Bullet 4"]}
+    with patch("src.cache.read_summary", return_value=mock_summary) as mock_read:
+        response = client.get("/api/article-summary?date=2020-01-01&city=th_delhi&issue_id=186654&ref=dummy.html")
+        assert response.status_code == 200
+        assert response.json() == mock_summary
+        mock_read.assert_called_once_with("2020-01-01", "th_delhi", "dummy")
+        # Past date -> immutable edge caching
+        assert response.headers["Cache-Control"] == "public, max-age=31536000, immutable"
+
+
+def test_article_summary_cache_miss_success(article_mock_html):
+    # Mock cache miss, successful fetch, parsing, summary generation and cache write
+    mock_summary = ["Bullet 1", "Bullet 2", "Bullet 3", "Bullet 4"]
+    with patch("src.cache.read_summary", return_value={}) as mock_read, \
+         patch("src.scraper.fetch_article_html", return_value=article_mock_html) as mock_fetch, \
+         patch("src.llm.summarize_article", return_value=mock_summary) as mock_sum, \
+         patch("src.cache.write_summary", return_value=True) as mock_write:
+         
+        # Space in ref should be replaced with +
+        response = client.get("/api/article-summary?date=2026-06-07&city=th_delhi&issue_id=186654&ref=foo bar.html&reason=curation reason")
+        assert response.status_code == 200
+        assert response.json() == {"summary": mock_summary}
+        
+        mock_read.assert_called_once_with("2026-06-07", "th_delhi", "bar")
+        mock_fetch.assert_called_once_with("th_delhi", "186654", "foo+bar.html")
+        mock_sum.assert_called_once()
+        # check that reason was stripped/cleaned
+        args, kwargs = mock_sum.call_args
+        assert args[2] == "curation reason"
+        mock_write.assert_called_once_with("2026-06-07", "th_delhi", "bar", {"summary": mock_summary})
+
+
+def test_article_summary_empty_content_400():
+    # If the parser finds absolutely no content
+    empty_html = "<html><body></body></html>"
+    with patch("src.cache.read_summary", return_value={}), \
+         patch("src.scraper.fetch_article_html", return_value=empty_html):
+         
+        response = client.get("/api/article-summary?date=2026-06-07&city=th_delhi&issue_id=186654&ref=dummy.html")
+        assert response.status_code == 400
+        assert "No article content available" in response.json()["detail"]
+        assert response.headers["Cache-Control"] == "no-store, no-cache, must-revalidate"
+
+
+def test_article_summary_edge_caching_headers():
+    from src.cache import get_ist_today_str
+    today_str = get_ist_today_str()
+    mock_summary = {"summary": ["Bullet 1", "Bullet 2", "Bullet 3", "Bullet 4"]}
+    
+    with patch("src.cache.read_summary", return_value=mock_summary):
+        # Today -> Hourly edge cache
+        response = client.get(f"/api/article-summary?date={today_str}&city=th_delhi&issue_id=186654&ref=dummy.html")
+        assert response.status_code == 200
+        assert response.headers["Cache-Control"] == "public, s-maxage=3600, stale-while-revalidate=86400"
+
+
+def test_article_summary_validation_whitespace_reason(article_mock_html):
+    # Whitespace reason should normalize to None
+    mock_summary = ["Bullet 1", "Bullet 2", "Bullet 3", "Bullet 4"]
+    with patch("src.cache.read_summary", return_value={}), \
+         patch("src.scraper.fetch_article_html", return_value=article_mock_html), \
+         patch("src.llm.summarize_article", return_value=mock_summary) as mock_sum, \
+         patch("src.cache.write_summary", return_value=True):
+         
+        response = client.get("/api/article-summary?date=2026-06-07&city=th_delhi&issue_id=186654&ref=dummy.html&reason=   ")
+        assert response.status_code == 200
+        args, kwargs = mock_sum.call_args
+        assert args[2] is None  # reason was normalized to None
+
+
+def test_article_summary_validation_invalid_reason():
+    response = client.get("/api/article-summary?date=2026-06-07&city=th_delhi&issue_id=186654&ref=dummy.html&reason=invalid_char_$_here")
+    assert response.status_code == 422
+
+
+def test_article_summary_requests_exception_502():
+    with patch("src.cache.read_summary", return_value={}), \
+         patch("src.scraper.fetch_article_html", side_effect=requests.RequestException("Connection timed out")):
+         
+        response = client.get("/api/article-summary?date=2026-06-07&city=th_delhi&issue_id=186654&ref=dummy.html")
+        assert response.status_code == 502
+        assert "Unable to fetch article content from server" in response.json()["detail"]
+
+
+def test_article_summary_generic_exception_500():
+    with patch("src.cache.read_summary", return_value={}), \
+         patch("src.scraper.fetch_article_html", side_effect=RuntimeError("unexpected database error")):
+         
+        response = client.get("/api/article-summary?date=2026-06-07&city=th_delhi&issue_id=186654&ref=dummy.html")
+        assert response.status_code == 500
+        assert "Internal server error" in response.json()["detail"]
+
+
+
+
 
 
 

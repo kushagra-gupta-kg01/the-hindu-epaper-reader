@@ -582,6 +582,130 @@ def test_thread_local_session_proxy_coverage():
     mock_session.head.assert_called_once_with("http://test")
 
 
+def test_summary_cache_filepath():
+    from src.cache import get_summary_filepath
+    path = get_summary_filepath("2026-06-07", "th_delhi", "art123")
+    assert path.endswith("summaries/2026-06-07/th_delhi/art123.json")
+
+
+def test_summary_cache_operations():
+    from src.cache import read_summary, write_summary, get_summary_filepath
+    date = "2026-06-07"
+    city = "th_test_city"
+    art_id = "art_123"
+    data = {"summary": ["bullet 1", "bullet 2", "bullet 3", "bullet 4"]}
+    
+    # Pre-clean if exists
+    filepath = get_summary_filepath(date, city, art_id)
+    if os.path.exists(filepath):
+        os.remove(filepath)
+        
+    # 1. Assert doesn't exist by reading
+    assert read_summary(date, city, art_id) == {}
+    
+    # 2. Write summary
+    success = write_summary(date, city, art_id, data)
+    assert success
+    
+    # 3. Read back
+    cached = read_summary(date, city, art_id)
+    assert cached == data
+    
+    # Clean up
+    if os.path.exists(filepath):
+        os.remove(filepath)
+
+
+def test_summary_cache_read_exception():
+    from src.cache import read_summary
+    with patch("os.path.exists", return_value=True), \
+         patch("builtins.open", side_effect=OSError("Read error")):
+        assert read_summary("2026-06-07", "th_delhi", "art123") == {}
+
+
+def test_summary_cache_write_replace_exception_removes_temp_file():
+    from src.cache import write_summary
+    with patch("os.makedirs"), \
+         patch("builtins.open"), \
+         patch("os.replace", side_effect=OSError("Replace error")), \
+         patch("os.path.exists", return_value=True), \
+         patch("os.remove") as mock_remove:
+        assert write_summary("2026-06-07", "th_delhi", "art123", {"data": 1}) is False
+        mock_remove.assert_called_once()
+
+
+def test_blob_summary_read_success():
+    from src.cache import read_summary
+    mock_data = {"summary": ["bullet"]}
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch.object(src.cache.session, "get") as mock_get:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = mock_data
+        mock_get.return_value = mock_response
+        assert read_summary("2026-06-07", "th_delhi", "art123") == mock_data
+        mock_get.assert_called_once_with("https://test.public.blob.vercel-storage.com/summaries/2026-06-07/th_delhi/art123.json", timeout=3.0)
+
+
+def test_blob_summary_read_failure_network_error():
+    from src.cache import read_summary
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch.object(src.cache.session, "get", side_effect=requests.RequestException("Timeout")):
+        assert read_summary("2026-06-07", "th_delhi", "art123") == {}
+
+
+def test_blob_summary_write_success():
+    from src.cache import write_summary
+    mock_data = {"summary": []}
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.BLOB_READ_WRITE_TOKEN", "token"), \
+         patch.object(src.cache.session, "put") as mock_put:
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_put.return_value = mock_response
+        assert write_summary("2026-06-07", "th_delhi", "art123", mock_data) is True
+        mock_put.assert_called_once_with(
+            "https://blob.vercel-storage.com/summaries/2026-06-07/th_delhi/art123.json",
+            headers={
+                "Authorization": "Bearer token",
+                "x-api-version": "1",
+                "x-add-random-suffix": "0",
+                "Content-Type": "application/json"
+            },
+            data=json.dumps(mock_data, indent=2),
+            timeout=3.0
+        )
+
+
+def test_blob_summary_write_token_missing():
+    from src.cache import write_summary
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.BLOB_READ_WRITE_TOKEN", None), \
+         patch.object(src.cache.session, "put") as mock_put:
+        assert write_summary("2026-06-07", "th_delhi", "art123", {"data": 1}) is False
+        mock_put.assert_not_called()
+
+
+def test_blob_summary_write_network_failure():
+    from src.cache import write_summary
+    with patch("src.cache.BLOB_STORE_URL", "https://test.public.blob.vercel-storage.com"), \
+         patch("src.cache.BLOB_READ_WRITE_TOKEN", "token"), \
+         patch.object(src.cache.session, "put", side_effect=requests.RequestException("Upload failed")):
+        assert write_summary("2026-06-07", "th_delhi", "art123", {"data": 1}) is False
+
+
+def test_summary_cache_write_remove_exception_is_silenced():
+    from src.cache import write_summary
+    with patch("os.makedirs"), \
+         patch("builtins.open"), \
+         patch("os.replace", side_effect=OSError("Replace error")), \
+         patch("os.path.exists", return_value=True), \
+         patch("os.remove", side_effect=OSError("Remove error")):
+        assert write_summary("2026-06-07", "th_delhi", "art123", {"data": 1}) is False
+
+
+
+
 
 
 

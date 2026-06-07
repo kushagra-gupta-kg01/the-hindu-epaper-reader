@@ -346,6 +346,81 @@ def get_top_headlines_endpoint(
     }
 
 
+@app.get("/api/article-summary")
+def get_article_summary_endpoint(
+    response: Response,
+    date: str = Query(..., description="Date in YYYY-MM-DD format"),
+    city: str = Query(..., description="City ID, e.g. th_delhi"),
+    issue_id: str = Query(..., description="Issue ID, e.g. 186654"),
+    ref: str = Query(..., description="HTML reference file name, e.g. Page+Article.html"),
+    reason: str = Query(None, description="Curation reason/Editor note")
+):
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        raise HTTPException(status_code=422, detail="Invalid date format", headers=ERROR_HEADERS)
+    if not re.match(r"^[a-zA-Z0-9_]+$", city):
+        raise HTTPException(status_code=422, detail="Invalid city format", headers=ERROR_HEADERS)
+    if not re.match(r"^\d+$", issue_id):
+        raise HTTPException(status_code=422, detail="Invalid issue_id format. Must be digits", headers=ERROR_HEADERS)
+    if not re.match(r"^(?!.*\.\.)[a-zA-Z0-9_\+\. \-]+$", ref) or not ref.endswith(".html"):
+        raise HTTPException(status_code=422, detail="Invalid ref format", headers=ERROR_HEADERS)
+
+    if reason is not None:
+        reason_stripped = reason.strip()
+        if not reason_stripped:
+            reason = None
+        else:
+            if len(reason) > 250:
+                raise HTTPException(status_code=422, detail="Reason too long", headers=ERROR_HEADERS)
+            if not re.match(r"^[a-zA-Z0-9_\-\.\s,\(\)\:\?\"\'\!\%\&\@\*\=\+\;]+$", reason):
+                raise HTTPException(status_code=422, detail="Invalid characters in reason", headers=ERROR_HEADERS)
+            reason = reason_stripped
+
+    article_id = get_article_id_from_ref(ref)
+
+    # Cache hit path
+    summary_data = cache.read_summary(date, city, article_id)
+    if isinstance(summary_data, dict) and summary_data.get("summary"):
+        cc_headers = get_cache_control_headers(date)
+        response.headers.update(cc_headers)
+        return summary_data
+
+    # Cache miss path
+    url_ref = ref.replace(" ", "+")
+    try:
+        html_content = scraper.fetch_article_html(city, issue_id, url_ref)
+        article_data = parser.parse_article(html_content, article_id)
+        
+        try:
+            article_text = parser.get_article_text_block(article_data)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e), headers=ERROR_HEADERS)
+
+        headline = article_data.get("headline") or ""
+        bullets = llm.summarize_article(headline, article_text, reason)
+        summary_payload = {"summary": bullets}
+
+        cache.write_summary(date, city, article_id, summary_payload)
+
+        cc_headers = get_cache_control_headers(date)
+        response.headers.update(cc_headers)
+        return summary_payload
+
+    except HTTPException:
+        raise
+    except requests.RequestException as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Unable to fetch article content from server: {e}",
+            headers=ERROR_HEADERS
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {e}",
+            headers=ERROR_HEADERS
+        )
+
+
 @app.get("/_vercel/insights/script.js")
 @app.get("/_vercel/speed-insights/script.js")
 def mock_vercel_analytics():

@@ -25,9 +25,30 @@ const state = {
 // TELEMETRY & ERROR TRACKING PROXIES
 // ==========================================================================
 
+function isSentryActive() {
+  if (typeof Sentry === 'undefined' || !Sentry.captureException) {
+    return false;
+  }
+  // Check if real Sentry SDK has been initialized with a client
+  if (typeof Sentry.getCurrentHub === 'function') {
+    const hub = Sentry.getCurrentHub();
+    if (hub && typeof hub.getClient === 'function' && hub.getClient()) {
+      return true;
+    }
+    return false;
+  }
+  // For test mocks that don't implement full getCurrentHub API
+  return true;
+}
+
 function captureException(error) {
-  if (typeof Sentry !== 'undefined' && Sentry.captureException) {
-    Sentry.captureException(error);
+  if (isSentryActive()) {
+    try {
+      Sentry.captureException(error);
+    } catch (e) {
+      console.error("Failed to send exception to Sentry:", e);
+      console.error("Original Exception:", error);
+    }
   } else {
     console.error("Blocked/Fallback captureException:", error);
   }
@@ -76,8 +97,10 @@ const aiStatusBadge = document.getElementById('ai-status-badge');
 const aiTriggerPanel = document.getElementById('ai-trigger-panel');
 const aiLoadingPanel = document.getElementById('ai-loading-panel');
 const aiReadyPanel = document.getElementById('ai-ready-panel');
+const aiErrorPanel = document.getElementById('ai-error-panel');
 const aiPicksGrid = document.getElementById('ai-picks-grid');
 const aiGenerateBtn = document.getElementById('ai-generate-btn');
+const aiRetryBtn = document.getElementById('ai-retry-btn');
 const aiLimitBtns = document.querySelectorAll('#ai-limit-group .ai-limit-btn');
 
 const bionicToggleBtn = document.getElementById('bionic-toggle-btn');
@@ -109,18 +132,31 @@ function getCleanSectionName(rawName) {
 const noiseHeadlines = [
   "th_subscribe_qr_code_new", "th27 panel", "nearby_shape_new", "sudoku",
   "sudoku_solution", "know your english", "the daily quiz", "the science quiz",
-  "rgladpage", "text_feedback", "scoreboard", "the results", "live telecast"
+  "rgladpage", "text_feedback", "scoreboard", "the results", "live telecast",
+  "feedback", "askus", "big shot"
+];
+
+const noiseSubstrings = [
+  "page1", "sirpage", "stadiump-age", "daily quiz", "science quiz",
+  "health quiz", "here is a quiz"
 ];
 
 function isNoiseArticle(headline) {
   if (!headline) return true;
   const h = headline.toLowerCase().trim();
-  if (noiseHeadlines.includes(h)) return true;
-  if (h.startsWith("th27 promo") || h.startsWith("th27 nearby") || h.startsWith("news in numbers")) return true;
-  if (h.startsWith("promo")) return true;
-  if (/^\d+bg/.test(h)) return true; // Matches e.g. "23bg..."
-  if (h.includes("page1") || h.includes("sirpage") || h.includes("stadiump-age")) return true;
-  if (/^\d+$/.test(h)) return true; // Matches pure page markers e.g. "14805"
+  const h_clean = h.replace(/\s+/g, ' ');
+  if (!h_clean) return true;
+
+  if (h_clean.includes("_")) return true;
+  if (noiseHeadlines.includes(h_clean)) return true;
+  if (/^promo(\s*(\d|_|\()|$)/.test(h_clean)) return true;
+  if (/^th\d+/.test(h_clean)) return true;
+  if (h_clean.startsWith("th27 promo") || h_clean.startsWith("th27 nearby") || h_clean.startsWith("news in numbers")) return true;
+  if (/^(vertical|picture|v|p)\d+$/.test(h_clean)) return true;
+  if (/^\d+$/.test(h_clean)) return true;
+  if (/^\d{2,}[a-zA-Z]{2,}/.test(h_clean)) return true;
+  if (noiseSubstrings.some(s => h_clean.includes(s))) return true;
+
   return false;
 }
 
@@ -315,6 +351,11 @@ function initApp() {
   // AI picks generation trigger
   if (aiGenerateBtn) {
     aiGenerateBtn.addEventListener('click', () => {
+      generateTopPicks();
+    });
+  }
+  if (aiRetryBtn) {
+    aiRetryBtn.addEventListener('click', () => {
       generateTopPicks();
     });
   }
@@ -752,17 +793,26 @@ function switchPanelState(stateName) {
     aiTriggerPanel.style.display = 'block';
     aiLoadingPanel.style.display = 'none';
     aiReadyPanel.style.display = 'none';
+    if (aiErrorPanel) aiErrorPanel.style.display = 'none';
     aiStatusBadge.textContent = 'Ready to generate';
   } else if (stateName === 'loading') {
     aiTriggerPanel.style.display = 'none';
     aiLoadingPanel.style.display = 'block';
     aiReadyPanel.style.display = 'none';
+    if (aiErrorPanel) aiErrorPanel.style.display = 'none';
     aiStatusBadge.textContent = 'Analyzing headlines...';
   } else if (stateName === 'ready') {
     aiTriggerPanel.style.display = 'none';
     aiLoadingPanel.style.display = 'none';
     aiReadyPanel.style.display = 'block';
+    if (aiErrorPanel) aiErrorPanel.style.display = 'none';
     aiStatusBadge.textContent = 'Curated by AI Editor';
+  } else if (stateName === 'error') {
+    aiTriggerPanel.style.display = 'none';
+    aiLoadingPanel.style.display = 'none';
+    aiReadyPanel.style.display = 'none';
+    if (aiErrorPanel) aiErrorPanel.style.display = 'block';
+    aiStatusBadge.textContent = 'Curation failed';
   }
 }
 
@@ -940,7 +990,7 @@ async function generateTopPicks() {
     console.error("Error generating top picks:", error);
     if (state.date === requestDate && state.city === requestCity) {
       state.topPicksStatus = 'failed';
-      switchPanelState('trigger');
+      switchPanelState('error');
       showBanner("Not able to generate AI picks right now");
     }
   }
@@ -977,7 +1027,8 @@ async function openArticleReader(htmlRef) {
   readerContent.style.display = 'none';
 
   // Global listeners activation
-  window.addEventListener('keydown', handleEscapeKey);
+  window.addEventListener('keydown', handleModalKeyDown);
+  window.addEventListener('touchmove', preventBodyScroll, { passive: false });
   readerPane.addEventListener('scroll', handleReaderProgress);
 
   try {
@@ -1119,7 +1170,8 @@ function closeArticleReader(pushHistory = true) {
   readerProgressBar.style.width = '0%';
 
   // Remove listeners
-  window.removeEventListener('keydown', handleEscapeKey);
+  window.removeEventListener('keydown', handleModalKeyDown);
+  window.removeEventListener('touchmove', preventBodyScroll, { passive: false });
   readerPane.removeEventListener('scroll', handleReaderProgress);
 
   // Restore scroll coordinates (removes iOS lock)
@@ -1134,10 +1186,52 @@ function closeArticleReader(pushHistory = true) {
   }
 }
 
-// Escape key press handler
-function handleEscapeKey(e) {
+function preventBodyScroll(e) {
+  if (readerPane && (readerPane === e.target || readerPane.contains(e.target))) {
+    return;
+  }
+  e.preventDefault();
+}
+
+function getFocusableElements(container) {
+  if (!container) return [];
+  return Array.from(container.querySelectorAll(
+    'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, [tabindex="0"], [contenteditable]'
+  )).filter(el => {
+    return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  });
+}
+
+// Keydown handler for open modal overlay (focus trap & escape key)
+function handleModalKeyDown(e) {
   if (e.key === 'Escape') {
     closeArticleReader();
+    return;
+  }
+  
+  if (e.key === 'Tab') {
+    const focusables = getFocusableElements(readerPane);
+    if (focusables.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    
+    if (e.shiftKey) {
+      // Shift + Tab: loop focus back to last element
+      if (document.activeElement === first) {
+        last.focus();
+        e.preventDefault();
+      }
+    } else {
+      // Tab: loop focus forward to first element
+      if (document.activeElement === last) {
+        first.focus();
+        e.preventDefault();
+      }
+    }
   }
 }
 

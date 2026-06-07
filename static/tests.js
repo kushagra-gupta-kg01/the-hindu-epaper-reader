@@ -265,7 +265,7 @@
     await generateTopPicks();
 
     assertEqual(state.topPicksStatus, 'failed');
-    assertEqual(document.getElementById('ai-trigger-panel').style.display, 'block');
+    assertEqual(document.getElementById('ai-error-panel').style.display, 'block');
     assertEqual(notificationText.textContent, "Not able to generate AI picks right now");
     assertEqual(notificationBanner.style.display, 'flex');
 

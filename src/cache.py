@@ -7,8 +7,35 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Initialize requests Session for connection pooling
-session = requests.Session()
+import threading
+
+class ThreadLocalSessionProxy:
+    def __init__(self):
+        self._local = threading.local()
+
+    @property
+    def session(self) -> requests.Session:
+        if not hasattr(self._local, "session"):
+            self._local.session = requests.Session()
+        return self._local.session
+
+    def get(self, *args, **kwargs):
+        return self.session.get(*args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        return self.session.post(*args, **kwargs)
+
+    def put(self, *args, **kwargs):
+        return self.session.put(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        return self.session.delete(*args, **kwargs)
+
+    def head(self, *args, **kwargs):
+        return self.session.head(*args, **kwargs)
+
+# Thread-safe session proxy configured at module level for connection pooling
+session = ThreadLocalSessionProxy()
 
 # Vercel Blob configuration
 BLOB_STORE_URL = os.environ.get("VERCEL_BLOB_STORE_URL")
@@ -50,7 +77,7 @@ def exists(date: str, city: str) -> bool:
     if BLOB_STORE_URL:
         url = get_blob_url(date, city)
         try:
-            resp = session.head(url, timeout=4.0)
+            resp = session.head(url, timeout=3.0)
             return resp.status_code == 200
         except requests.RequestException as e:
             logger.warning(f"Error checking cache existence on Vercel Blob: {e}")
@@ -74,7 +101,7 @@ def read(date: str, city: str) -> dict:
         if BLOB_STORE_URL:
             url = get_blob_url(date, city)
             try:
-                resp = session.get(url, timeout=4.0)
+                resp = session.get(url, timeout=3.0)
                 if resp.status_code == 200:
                     result = resp.json()
                     status = "hit"
@@ -129,7 +156,7 @@ def write(date: str, city: str, data: dict) -> bool:
                 "Content-Type": "application/json"
             }
             try:
-                resp = session.put(url, headers=headers, data=json.dumps(data, indent=2), timeout=4.0)
+                resp = session.put(url, headers=headers, data=json.dumps(data, indent=2), timeout=3.0)
                 resp.raise_for_status()
                 success = True
                 status = "success"
@@ -183,7 +210,7 @@ def clear(date: str, city: str):
             "x-api-version": "1"
         }
         try:
-            session.delete(url, headers=headers, timeout=4.0)
+            session.delete(url, headers=headers, timeout=3.0)
         except requests.RequestException as e:
             logger.warning(f"Error deleting main cache from Vercel Blob: {e}")
         
@@ -199,33 +226,6 @@ def clear(date: str, city: str):
             pass
     clear_top(date, city)
 
-def top_exists(date: str, city: str) -> bool:
-    if not exists(date, city):
-        return False
-
-    if BLOB_STORE_URL:
-        url = get_top_blob_url(date, city)
-        try:
-            resp = session.head(url, timeout=4.0)
-            if resp.status_code != 200:
-                return False
-            data = read_top(date, city)
-            return data.get("status") == "ready"
-        except requests.RequestException as e:
-            logger.warning(f"Error checking top cache existence on Vercel Blob: {e}")
-            return False
-
-    # Fallback to local file cache
-    path = get_top_filepath(date, city)
-    if not os.path.exists(path):
-        return False
-        
-    data = read_top(date, city)
-    if data.get("status") != "ready":
-        return False
-            
-    return True
-
 def read_top(date: str, city: str) -> dict:
     import src.telemetry
     import time
@@ -240,7 +240,7 @@ def read_top(date: str, city: str) -> dict:
         if BLOB_STORE_URL:
             url = get_top_blob_url(date, city)
             try:
-                resp = session.get(url, timeout=4.0)
+                resp = session.get(url, timeout=3.0)
                 if resp.status_code == 200:
                     result = resp.json()
                     status = "hit"
@@ -295,7 +295,7 @@ def write_top(date: str, city: str, data: dict) -> bool:
                 "Content-Type": "application/json"
             }
             try:
-                resp = session.put(url, headers=headers, data=json.dumps(data, indent=2), timeout=4.0)
+                resp = session.put(url, headers=headers, data=json.dumps(data, indent=2), timeout=3.0)
                 resp.raise_for_status()
                 success = True
                 status = "success"
@@ -348,7 +348,7 @@ def clear_top(date: str, city: str):
             "x-api-version": "1"
         }
         try:
-            session.delete(url, headers=headers, timeout=4.0)
+            session.delete(url, headers=headers, timeout=3.0)
         except requests.RequestException as e:
             logger.warning(f"Error deleting top cache from Vercel Blob: {e}")
         return

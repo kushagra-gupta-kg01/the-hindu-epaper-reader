@@ -257,3 +257,65 @@ def test_llm_generic_markdown_codeblock(sample_headlines):
         result = rank_headlines(sample_headlines, limit=5)
         assert result == llm_payload["top_articles"]
 
+
+def test_llm_thread_local_session_proxy_coverage():
+    from src.llm import ThreadLocalSessionProxy
+    proxy = ThreadLocalSessionProxy()
+    # Trigger instantiation
+    assert isinstance(proxy.session, requests.Session)
+    mock_session = MagicMock()
+    proxy._local.session = mock_session
+    
+    proxy.get("http://test")
+    mock_session.get.assert_called_once_with("http://test")
+    
+    proxy.post("http://test")
+    mock_session.post.assert_called_once_with("http://test")
+    
+    proxy.put("http://test")
+    mock_session.put.assert_called_once_with("http://test")
+    
+    proxy.delete("http://test")
+    mock_session.delete.assert_called_once_with("http://test")
+    
+    proxy.head("http://test")
+    mock_session.head.assert_called_once_with("http://test")
+
+
+def test_llm_budget_truncation():
+    # Construct a massive list of articles (e.g. 300 articles)
+    large_articles = []
+    for i in range(300):
+        # Each line is approx 90 chars. 300 lines = 27,000 chars, which exceeds the 16,000 char limit.
+        large_articles.append({"id": f"art_{i}", "headline": f"Massive headline number {i} with some long text to fill space"})
+        
+    massive_headlines = {
+        "pages": [
+            {
+                "page_num": 1,
+                "page_name": "Front_Pg",
+                "articles": large_articles
+            }
+        ]
+    }
+    
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "choices": [{"message": {"content": '{"top_articles": []}'}}]
+    }
+    
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "mock_secret_key"}), \
+         patch("src.llm.session.post", return_value=mock_response) as mock_post:
+         
+        rank_headlines(massive_headlines, limit=5)
+        
+        # Verify that the post request was made
+        assert mock_post.called
+        args, kwargs = mock_post.call_args
+        sent_prompt = kwargs["json"]["messages"][1]["content"]
+        # Character length of sent prompt should be bounded and not include all 300 articles
+        assert len(sent_prompt) < 20000
+        # Check that the last article "art_299" is not in the prompt, indicating it was truncated
+        assert "art_299" not in sent_prompt
+

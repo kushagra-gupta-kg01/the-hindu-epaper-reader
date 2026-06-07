@@ -28,8 +28,7 @@ def test_get_headlines_cache_hit():
         "pages": [{"page_num": 1, "page_name": "Jacket_01", "articles": []}]
     }
     
-    with patch("src.cache.exists", return_value=True) as mock_exists, \
-         patch("src.cache.read", return_value=mock_headlines) as mock_read, \
+    with patch("src.cache.read", return_value=mock_headlines) as mock_read, \
          patch("src.scraper.fetch_catalog") as mock_fetch:
          
         # WHEN we call the endpoint
@@ -38,13 +37,12 @@ def test_get_headlines_cache_hit():
         # THEN we get a successful cached response instantly
         assert response.status_code == 200
         assert response.json() == mock_headlines
-        mock_exists.assert_called_once_with("2026-05-28", "th_delhi")
         mock_read.assert_called_once_with("2026-05-28", "th_delhi")
         mock_fetch.assert_not_called()
 
 def test_get_headlines_cache_miss(catalog_mock_data, cciobjects_mock_data):
     # GIVEN the file is NOT cached on disk
-    with patch("src.cache.exists", return_value=False) as mock_exists, \
+    with patch("src.cache.read", return_value={}) as mock_read, \
          patch("src.scraper.fetch_catalog", return_value=catalog_mock_data) as mock_fetch_cat, \
          patch("src.scraper.fetch_cciobjects", return_value=cciobjects_mock_data) as mock_fetch_cci, \
          patch("src.cache.write", return_value=True) as mock_write:
@@ -61,7 +59,7 @@ def test_get_headlines_cache_miss(catalog_mock_data, cciobjects_mock_data):
         assert data["issue_id"] == "186654"
         assert len(data["pages"]) == 22
         
-        mock_exists.assert_called_once_with("2026-05-28", "th_delhi")
+        mock_read.assert_called_once_with("2026-05-28", "th_delhi")
         mock_fetch_cat.assert_called_once_with("2026-05-28", "th_delhi")
         mock_fetch_cci.assert_called_once_with("186654", "th_delhi")
         mock_write.assert_called_once()
@@ -90,7 +88,7 @@ def test_get_article_ssrf_mitigation():
     
 def test_api_network_failure_502():
     # GIVEN the scraper fails due to network outage (cache miss)
-    with patch("src.cache.exists", return_value=False), \
+    with patch("src.cache.read", return_value={}), \
          patch("src.scraper.fetch_catalog", side_effect=requests.RequestException("Connection refused")):
          
         # WHEN we call the endpoint
@@ -122,7 +120,7 @@ def test_static_js_serving():
 
 def test_headlines_payload_issue_id_matches_catalog(catalog_mock_data, cciobjects_mock_data):
     # GIVEN a cache miss where catalog resolves to "186654"
-    with patch("src.cache.exists", return_value=False), \
+    with patch("src.cache.read", return_value={}), \
          patch("src.scraper.fetch_catalog", return_value=catalog_mock_data), \
          patch("src.scraper.fetch_cciobjects", return_value=cciobjects_mock_data) as mock_fetch_cci, \
          patch("src.cache.write", return_value=True):
@@ -555,8 +553,7 @@ def test_top_headlines_write_failure_non_fatal():
 
 def test_api_telemetry_middleware_success():
     mock_headlines = {"date": "2026-05-28", "city": "th_delhi", "pages": []}
-    with patch("src.cache.exists", return_value=True), \
-         patch("src.cache.read", return_value=mock_headlines), \
+    with patch("src.cache.read", return_value=mock_headlines), \
          patch("src.telemetry.log_event") as mock_log:
         response = client.get("/api/headlines?date=2026-05-28&city=th_delhi")
         assert response.status_code == 200
@@ -584,7 +581,7 @@ def test_api_telemetry_middleware_skipped_for_static():
 
 def test_api_telemetry_middleware_unhandled_exception():
     with patch("src.service.get_headlines", side_effect=RuntimeError("Unexpected error")), \
-         patch("src.cache.exists", return_value=False), \
+         patch("src.cache.read", return_value={}), \
          patch("src.telemetry.log_event") as mock_log:
         response = client.get("/api/headlines?date=2026-05-28&city=th_delhi")
         assert response.status_code == 500
@@ -629,6 +626,99 @@ def test_vercel_analytics_mocks():
     assert response.status_code == 200
     assert response.headers["Content-Type"] == "application/javascript"
     assert response.text == "/* Local mock */"
+
+
+def test_get_article_parameter_validation():
+    # Invalid city format
+    response = client.get("/api/article?city=invalid-city&issue_id=186654&ref=dummy.html")
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Invalid city format"
+    assert response.headers["Cache-Control"] == "no-store, no-cache, must-revalidate"
+
+    # Invalid issue_id format
+    response = client.get("/api/article?city=th_delhi&issue_id=abc&ref=dummy.html")
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Invalid issue_id format. Must be digits"
+
+    # Invalid ref format
+    response = client.get("/api/article?city=th_delhi&issue_id=186654&ref=dummy;html")
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Invalid ref format"
+
+
+def test_normalize_id_empty_cleaned():
+    from api.index import normalize_id
+    # Test spaces normalize to empty string
+    assert normalize_id("   ") == ""
+    # Test punctuation only strings normalize to empty string
+    assert normalize_id("---") == ""
+
+
+def test_top_headlines_ratings_handling():
+    mock_headlines = {
+        "pages": [
+            {
+                "page_num": 1,
+                "articles": [{"id": "GO1G1NQTF.1", "headline": "Headline"}]
+            }
+        ]
+    }
+    # 1. Fewer than 4 elements ratings
+    mock_llm_result_short = [
+        {"id": "go1g1nqtf", "ratings": [9, 10], "reason": "Short ratings"}
+    ]
+    with patch("src.cache.read_top", return_value={}), \
+         patch("src.cache.read", return_value=mock_headlines), \
+         patch("src.llm.rank_headlines", return_value=mock_llm_result_short), \
+         patch("src.cache.write_top", return_value=True):
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["top_articles"][0]["ratings"] == {
+            "impact": 9,
+            "importance": 10,
+            "interest": 0,
+            "depth": 0
+        }
+
+    # 2. Ratings out of bounds (negative or > 10)
+    mock_llm_result_bounds = [
+        {"id": "go1g1nqtf", "ratings": [-1, 15, 8, 7], "reason": "Out of bounds"}
+    ]
+    with patch("src.cache.read_top", return_value={}), \
+         patch("src.cache.read", return_value=mock_headlines), \
+         patch("src.llm.rank_headlines", return_value=mock_llm_result_bounds), \
+         patch("src.cache.write_top", return_value=True):
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["top_articles"][0]["ratings"] == {
+            "impact": 0,
+            "importance": 0,
+            "interest": 8,
+            "depth": 7
+        }
+
+    # 3. Unparseable types in ratings array
+    mock_llm_result_unparseable = [
+        {"id": "go1g1nqtf", "ratings": ["nine", 10, None, 7], "reason": "Unparseable"}
+    ]
+    with patch("src.cache.read_top", return_value={}), \
+         patch("src.cache.read", return_value=mock_headlines), \
+         patch("src.llm.rank_headlines", return_value=mock_llm_result_unparseable), \
+         patch("src.cache.write_top", return_value=True):
+         
+        response = client.get("/api/top-headlines?date=2026-05-28&city=th_delhi&generate=true")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["top_articles"][0]["ratings"] == {
+            "impact": 0,
+            "importance": 10,
+            "interest": 0,
+            "depth": 7
+        }
 
 
 

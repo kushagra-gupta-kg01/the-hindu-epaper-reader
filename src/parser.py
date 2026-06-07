@@ -8,8 +8,9 @@ NOISE_SUBSTRINGS = {
 }
 
 NOISE_EXACT = {
-    "sudoku", "scoreboard", "live telecast", "the results", "know your english",
-    "feedback", "rgladpage", "askus", "big shot"
+    "sudoku", "sudoku_solution", "scoreboard", "live telecast", "the results", "know your english",
+    "feedback", "rgladpage", "askus", "big shot", "th_subscribe_qr_code_new", "th27 panel",
+    "nearby_shape_new", "text_feedback", "the daily quiz", "the science quiz"
 }
 
 def _is_noise_article(headline: str) -> bool:
@@ -29,13 +30,14 @@ def _is_noise_article(headline: str) -> bool:
         return True
     if re.match(r"^th\d+", h_clean):
         return True
+    if h_clean.startswith("th27 promo") or h_clean.startswith("th27 nearby") or h_clean.startswith("news in numbers"):
+        return True
         
     # 3. Layout references: word followed by number (e.g. "vertical1", "picture3", "v3", "p2")
     if re.match(r"^(vertical|picture|v|p)\d+$", h_clean):
         return True
         
     # 4. Pure numbers or alphanumeric page templates (e.g. "14805", "23bg", "27HyPointr")
-    # Required minimum: 2 digits followed immediately by 2 letters (ignores 3D, 5G, 24x7)
     if re.match(r"^\d+$", h_clean):
         return True
     if re.match(r"^\d{2,}[a-zA-Z]{2,}", h_clean):
@@ -132,7 +134,14 @@ def parse_cciobjects(cciobjects_json: str) -> dict:
                             ref = c.get("reference", "")
                             if "Public/" in ref and ref.endswith(".jpg"):
                                 images.append(ref)
-                images = list(dict.fromkeys(images))
+                seen_imgs = set()
+                deduped_images = []
+                for img in images:
+                    img_lower = img.lower()
+                    if img_lower not in seen_imgs:
+                        seen_imgs.add(img_lower)
+                        deduped_images.append(img)
+                images = deduped_images
                 parsed_articles.append({
                     "id": art_id,
                     "headline": art_headline or art_name,

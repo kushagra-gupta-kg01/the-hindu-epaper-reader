@@ -3,8 +3,35 @@ import json
 import uuid
 import requests
 
-# Thread-safe session configured at module level for connection pooling
-session = requests.Session()
+import threading
+
+class ThreadLocalSessionProxy:
+    def __init__(self):
+        self._local = threading.local()
+
+    @property
+    def session(self) -> requests.Session:
+        if not hasattr(self._local, "session"):
+            self._local.session = requests.Session()
+        return self._local.session
+
+    def get(self, *args, **kwargs):
+        return self.session.get(*args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        return self.session.post(*args, **kwargs)
+
+    def put(self, *args, **kwargs):
+        return self.session.put(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        return self.session.delete(*args, **kwargs)
+
+    def head(self, *args, **kwargs):
+        return self.session.head(*args, **kwargs)
+
+# Thread-safe session proxy configured at module level for connection pooling
+session = ThreadLocalSessionProxy()
 
 
 def rank_headlines(headlines_data: dict, limit: int) -> list:
@@ -14,6 +41,8 @@ def rank_headlines(headlines_data: dict, limit: int) -> list:
 
     # 1. Compile the article list inside structural XML tags
     formatted_lines = []
+    current_char_count = 0
+    max_char_limit = 16000
     for page in headlines_data.get("pages", []):
         page_num = page.get("page_num", 0)
         page_name = page.get("page_name", "Unknown")
@@ -21,12 +50,17 @@ def rank_headlines(headlines_data: dict, limit: int) -> list:
             art_id = art.get("id")
             headline = art.get("headline", "")
             
-            # Sanitize structural characters and strip newlines to block injection
-            safe_headline = headline.replace("<", "[").replace(">", "]").replace("\n", " ").replace("\r", " ").strip()
+            # Remove control characters (non-printable, ascii < 32 except space)
+            safe_headline = "".join(ch for ch in headline if ch == " " or ord(ch) >= 32)
             
-            formatted_lines.append(
-                f"- ID: {art_id} | Page: {page_num} | Section: {page_name} | Headline: {safe_headline}"
-            )
+            # Sanitize structural characters and strip newlines to block injection
+            safe_headline = safe_headline.replace("<", "[").replace(">", "]").replace("\n", " ").replace("\r", " ").replace("</", "[").replace("/>", "]").strip()
+            
+            line = f"- ID: {art_id} | Page: {page_num} | Section: {page_name} | Headline: {safe_headline}"
+            if current_char_count + len(line) + 1 > max_char_limit:
+                break
+            formatted_lines.append(line)
+            current_char_count += len(line) + 1
 
     articles_block = "\n".join(formatted_lines)
     

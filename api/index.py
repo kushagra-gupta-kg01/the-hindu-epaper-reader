@@ -125,10 +125,31 @@ def get_headlines_endpoint(
 
 @app.get("/api/article")
 def get_article_endpoint(
+    response: Response,
     city: str = Query(..., description="City ID, e.g. th_delhi"),
     issue_id: str = Query(..., description="Issue ID, e.g. 186654"),
     ref: str = Query(..., description="HTML reference file name, e.g. Page+Article.html")
 ):
+    # Validate parameters to block unaligned/unsafe requests
+    if not re.match(r"^[a-zA-Z0-9_]+$", city):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid city format",
+            headers=ERROR_HEADERS
+        )
+    if not re.match(r"^\d+$", issue_id):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid issue_id format. Must be digits",
+            headers=ERROR_HEADERS
+        )
+    if not re.match(r"^[a-zA-Z0-9_\+\.\s\-]+$", ref):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid ref format",
+            headers=ERROR_HEADERS
+        )
+
     # Re-encode space back to plus for the file server URL
     url_ref = ref.replace(" ", "+")
     
@@ -138,22 +159,37 @@ def get_article_endpoint(
     try:
         html_content = scraper.fetch_article_html(city, issue_id, url_ref)
         article_data = parser.parse_article(html_content, article_id)
+        
+        # Set immutable long-term Cache-Control for articles (parsed data is static)
+        response.headers.update({"Cache-Control": "public, max-age=31536000, immutable"})
+        
         return article_data
     except requests.RequestException as e:
         raise HTTPException(
             status_code=502,
-            detail=f"Unable to fetch article content from server: {e}"
+            detail=f"Unable to fetch article content from server: {e}",
+            headers=ERROR_HEADERS
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Internal server error: {e}"
+            detail=f"Internal server error: {e}",
+            headers=ERROR_HEADERS
         )
 
 def normalize_id(art_id: str) -> str:
     if not art_id:
         return ""
-    return art_id.split(".")[0].strip().lower()
+    # Strip whitespace, quotes, brackets, and other punctuation
+    cleaned = str(art_id).strip()
+    if not cleaned:
+        return ""
+    # Suffix stripping: split on '.' and take the first part
+    base = cleaned.split(".")[0]
+    # Remove leading/trailing non-alphanumeric characters
+    base = re.sub(r'^[^a-zA-Z0-9]+', '', base)
+    base = re.sub(r'[^a-zA-Z0-9]+$', '', base)
+    return base.strip().lower()
 
 @app.get("/api/top-headlines")
 def get_top_headlines_endpoint(
@@ -251,9 +287,26 @@ def get_top_headlines_endpoint(
         norm_id = normalize_id(raw_id)
         if norm_id in lookup:
             original_art = lookup[norm_id]
-            ratings_arr = item.get("ratings", [])
-            if not isinstance(ratings_arr, list) or len(ratings_arr) < 4:
+            ratings_arr = item.get("ratings")
+            if not isinstance(ratings_arr, list):
                 ratings_arr = [0, 0, 0, 0]
+            else:
+                # Pad to at least 4 items
+                while len(ratings_arr) < 4:
+                    ratings_arr.append(0)
+                # Parse to integer and clip to 0-10
+                cleaned_ratings = []
+                for val in ratings_arr[:4]:
+                    try:
+                        ival = int(val)
+                        if ival < 0 or ival > 10:
+                            cleaned_ratings.append(0)
+                        else:
+                            cleaned_ratings.append(ival)
+                    except (ValueError, TypeError):
+                        cleaned_ratings.append(0)
+                ratings_arr = cleaned_ratings
+
             ratings_dict = {
                 "impact": ratings_arr[0],
                 "importance": ratings_arr[1],

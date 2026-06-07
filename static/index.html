@@ -172,6 +172,20 @@
     <div id="ai-ready-panel" class="ai-panel" style="display: none;">
       <div id="ai-picks-grid" class="ai-picks-grid"></div>
     </div>
+
+    <!-- State D: Error Panel (If generation fails) -->
+    <div id="ai-error-panel" class="ai-panel" style="display: none;">
+      <div class="ai-trigger-content">
+        <p class="ai-trigger-desc" style="color: var(--accent-color); font-weight: bold;">
+          ⚠️ AI Curation failed. The AI Editorial assistant encountered an error.
+        </p>
+        <div class="ai-trigger-actions">
+          <button class="ai-gen-btn" id="ai-retry-btn" style="background-color: var(--accent-color);">
+            🔄 Retry AI Curation
+          </button>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- Main Newspaper Headlines Area -->
@@ -205,10 +219,10 @@
         <button id="bionic-toggle-btn" class="toolbar-btn" aria-label="Toggle Bionic Reading">Bionic: Off</button>
         <div id="gutenberg-subcontrols" class="fixation-control" style="display: none;">
           <label>Paper:</label>
-          <div class="theme-switcher" id="paper-style-selector" style="border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; display: flex;">
-            <button class="theme-btn ctrl-btn active" data-paper="paper-ivory" style="font-size: 0.72rem; padding: 4px 8px; border: none; background: none;" title="Warm Ivory">Ivory</button>
-            <button class="theme-btn ctrl-btn" data-paper="paper-white" style="font-size: 0.72rem; padding: 4px 8px; border: none; border-left: 1px solid var(--border-color); background: none;" title="Modern High Contrast">Contrast</button>
-            <button class="theme-btn ctrl-btn" data-paper="paper-sepia" style="font-size: 0.72rem; padding: 4px 8px; border: none; border-left: 1px solid var(--border-color); background: none;" title="Warm Sepia">Sepia</button>
+          <div class="theme-switcher" id="paper-style-selector">
+            <button class="theme-btn ctrl-btn active" data-paper="paper-ivory" title="Warm Ivory">Ivory</button>
+            <button class="theme-btn ctrl-btn" data-paper="paper-white" title="Modern High Contrast">Contrast</button>
+            <button class="theme-btn ctrl-btn" data-paper="paper-sepia" title="Warm Sepia">Sepia</button>
           </div>
         </div>
         <div class="fixation-control" id="fixation-control" style="display: none;">

@@ -3,9 +3,10 @@ from src import scraper
 from src import parser
 
 def get_headlines(date: str, city: str) -> dict:
-    # 1. Cache Hit
-    if cache.exists(date, city):
-        return cache.read(date, city)
+    # 1. Direct Cache Read (Cache Hit Optimization & Validation Check)
+    cached_data = cache.read(date, city)
+    if cached_data and isinstance(cached_data, dict) and "pages" in cached_data:
+        return cached_data
         
     # 2. Cache Miss: Fetch & Parse
     catalog_json = scraper.fetch_catalog(date, city)

@@ -264,4 +264,9 @@ def test_parse_cciobjects_filters_noise_articles():
     }
 
 
+def test_noise_article_news_in_numbers_no_underscores():
+    from src.parser import _is_noise_article
+    assert _is_noise_article("news in numbers 123") is True
+
+
 
